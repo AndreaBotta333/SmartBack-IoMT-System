@@ -1,0 +1,17 @@
+{
+  "name": "SmartBack Mobile",
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "mobile",
+  "runServices": ["mobile"],
+  "workspaceFolder": "/workspace/app",
+  "overrideCommand": false,
+  "shutdownAction": "none",
+  "remoteUser": "root",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  }
+}

@@ -216,3 +216,40 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# SmartBack - file locali e di sistema
+.DS_Store
+**/.DS_Store
+.env
+.env.*
+!.env.example
+/env
+
+# Dipendenze, cache e output Expo/Node
+node_modules/
+**/node_modules/
+.expo/
+**/.expo/
+mobile/app/.claude/
+
+# Dati persistenti e runtime dei servizi Docker
+/backend/data/
+/grafana/data/
+/influxdb/data/
+/mosquitto/data/
+/mosquitto/log/
+/nodered/data/
+/nodered/smartback/.npm/
+/nodered/smartback/.config.*
+/nodered/smartback/*.backup
+/nodered/smartback/flows_cred.json
+
+# Database, log e cache generati localmente
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.bolt
+*.log
+__pycache__/
+*.py[codz]

@@ -1,0 +1,154 @@
+name: smartback
+
+x-influx-env: &influx-env
+  INFLUXDB_URL: http://influxdb:8086
+  INFLUXDB_ORG: ${INFLUXDB_ORG}
+  INFLUXDB_BUCKET: ${INFLUXDB_BUCKET}
+  INFLUXDB_TOKEN: ${INFLUXDB_TOKEN}
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: smartback-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config:ro
+      - smartback-mosquitto-data:/mosquitto/data
+      - smartback-mosquitto-log:/mosquitto/log
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h localhost -t '$$SYS/broker/uptime' -C 1 -W 3 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  influxdb:
+    image: influxdb:2.7
+    container_name: smartback-influxdb
+    restart: unless-stopped
+    ports:
+      - "8086:8086"
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUXDB_USERNAME}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUXDB_PASSWORD}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUXDB_ORG}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUXDB_BUCKET}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_TOKEN}
+    volumes:
+      - smartback-influxdb-data:/var/lib/influxdb2
+      - smartback-influxdb-config:/etc/influxdb2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  nodered:
+    image: nodered/node-red:latest
+    container_name: smartback-nodered
+    restart: unless-stopped
+    ports:
+      - "1880:1880"
+    environment:
+      <<: *influx-env
+      FLOWS: flows.json
+    volumes:
+      - ./nodered/smartback:/data
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+
+  backend:
+    build: ./backend
+    container_name: smartback-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - smartback-backend-data:/app/data
+    environment:
+      <<: *influx-env
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      MQTT_POSTURE_TOPIC: smartback/normalized/posture
+      MQTT_DEVICE_TOPIC: smartback/normalized/device
+      MEDICAL_REGISTRATION_CODE: ${MEDICAL_REGISTRATION_CODE:-SMARTBACK-MED-2026}
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+
+  simulator:
+    build: ./simulator
+    container_name: smartback-simulator
+    restart: unless-stopped
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      DEVICE_ID: howdy-sim-001
+      PATIENT_ID: patient-demo-001
+      PUBLISH_INTERVAL_SECONDS: 1
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: smartback-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      INFLUXDB_ORG: ${INFLUXDB_ORG}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET}
+      INFLUXDB_TOKEN: ${INFLUXDB_TOKEN}
+    volumes:
+      - smartback-grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      influxdb:
+        condition: service_healthy
+
+  mobile:
+    profiles: ["mobile"]
+    build:
+      context: ./mobile
+      dockerfile: Dockerfile
+    container_name: smartback-mobile
+    working_dir: /workspace/app
+    volumes:
+      - ./mobile/app:/workspace/app
+      - smartback-mobile-node-modules:/workspace/app/node_modules
+    ports:
+      - "8081:8081"
+      - "19000:19000"
+      - "19001:19001"
+      - "19002:19002"
+    environment:
+      EXPO_DEVTOOLS_LISTEN_ADDRESS: 0.0.0.0
+      REACT_NATIVE_PACKAGER_HOSTNAME: ${HOST_IP:-localhost}
+      EXPO_PUBLIC_API_URL: http://${HOST_IP:-localhost}:${API_PORT:-8000}
+      EXPO_PUBLIC_WS_URL: ws://${HOST_IP:-localhost}:${API_PORT:-8000}/ws/wearable
+    command: sleep infinity
+    stdin_open: true
+    tty: true
+
+volumes:
+  smartback-mosquitto-data:
+  smartback-mosquitto-log:
+  smartback-influxdb-data:
+  smartback-influxdb-config:
+  smartback-grafana-data:
+  smartback-mobile-node-modules:
+  smartback-backend-data:

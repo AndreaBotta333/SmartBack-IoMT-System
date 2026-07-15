@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "SmartBack",
+    "slug": "smartback",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "plugins": ["expo-secure-store"],
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f5f7f6"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "it.smartback.monitoring"
+    },
+    "android": {
+      "package": "it.smartback.monitoring",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
