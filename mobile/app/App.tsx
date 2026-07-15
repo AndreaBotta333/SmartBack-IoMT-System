@@ -31,11 +31,19 @@ type PostureSample = {
 };
 type DeviceStatus = { device_id: string; state_of_charge?: number; charging?: boolean };
 type AppScreen = "dashboard" | "profile" | "password" | "settings";
+type HistorySample = { timestamp: string; deviation_deg: number; posture_status: PostureStatus; is_incorrect: boolean };
+type PatientStatistics = { samples: number; correct_percentage: number; incorrect_percentage: number; average_deviation_deg: number; maximum_deviation_deg: number };
+type MonitoringConfig = { moderate_deviation_deg: number; marked_deviation_deg: number; persistence_seconds: number };
+type HistoryPeriod = 60 | 360 | 1440 | 10080;
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
 const WS_URL = process.env.EXPO_PUBLIC_WS_URL ?? "ws://localhost:8000/ws/wearable";
 const SESSION_KEY = "smartback.session";
 const MAX_SAMPLES = 30;
+const HISTORY_PERIODS: { minutes: HistoryPeriod; label: string }[] = [
+  { minutes: 60, label: "1 ora" }, { minutes: 360, label: "6 ore" },
+  { minutes: 1440, label: "24 ore" }, { minutes: 10080, label: "7 giorni" },
+];
 const NAME_PATTERN = /^\p{L}+(?:[ '\u2019-]\p{L}+)*$/u;
 const EMAIL_PATTERN = /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,63}$/i;
 const PASSWORD_NUMBER_PATTERN = /\d/;
@@ -384,6 +392,7 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
           <>
             {session.user.role === "doctor" && <Pressable onPress={() => setSelectedPatient(null)} style={styles.patientStrip}><Text style={styles.backArrow}>‹</Text><View style={{ flex: 1 }}><Text style={styles.overline}>PAZIENTE SELEZIONATO</Text><Text style={styles.patientName}>{selectedPatient?.name}</Text></View><Text style={styles.patientCode}>{selectedPatient?.patient_code}</Text></Pressable>}
             <View style={styles.waitingCard}><ActivityIndicator color="#087f6a" size="large" /><Text style={styles.waitingTitle}>Nessun dato in tempo reale</Text><Text style={styles.muted}>Questo paziente non ha ancora un dispositivo attivo.</Text></View>
+            <HistoricalInsights session={session} patient={selectedPatient} />
           </>
         ) : (
           <>
@@ -403,6 +412,7 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
               <View style={styles.sectionHeading}><View><Text style={styles.sectionTitle}>Andamento recente</Text><Text style={styles.mutedSmall}>Ultimi {visibleSamples.length} campioni · gradi</Text></View><View style={styles.legendDot}><View style={styles.miniDot} /><Text style={styles.legendText}>Deviazione</Text></View></View>
               <LineChart data={chartData} width={Math.max(280, width - 56)} height={190} withDots={false} withOuterLines={false} yAxisSuffix="°" chartConfig={{ backgroundGradientFrom: "#fff", backgroundGradientTo: "#fff", decimalPlaces: 0, color: (opacity = 1) => `rgba(8,127,106,${opacity})`, labelColor: (opacity = 1) => `rgba(71,84,103,${opacity})`, propsForBackgroundLines: { stroke: "#e4eeeb", strokeDasharray: "4 4" } }} bezier style={styles.chart} />
             </View>
+            <HistoricalInsights session={session} patient={selectedPatient} />
             <View style={styles.infoGrid}>
               <InfoCard icon="▣" label="Dispositivo" value={latest.device_id} />
               <InfoCard icon="ϟ" label="Batteria" value={device?.state_of_charge != null ? `${Math.round(device.state_of_charge)}%` : "—"} />
@@ -418,6 +428,139 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
       )}
     </SafeAreaView>
   );
+}
+
+function HistoricalInsights({ session, patient }: { session: Session; patient: DoctorPatient | null }) {
+  const { width } = useWindowDimensions();
+  const [period, setPeriod] = useState<HistoryPeriod>(60);
+  const [history, setHistory] = useState<HistorySample[]>([]);
+  const [statistics, setStatistics] = useState<PatientStatistics | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [config, setConfig] = useState<MonitoringConfig | null>(null);
+  const [moderate, setModerate] = useState("");
+  const [marked, setMarked] = useState("");
+  const [persistence, setPersistence] = useState("");
+  const [savingConfig, setSavingConfig] = useState(false);
+  const patientId = session.user.role === "doctor" ? patient?.id : undefined;
+
+  const loadHistory = useCallback(async () => {
+    if (session.user.role === "doctor" && !patientId) return;
+    setLoading(true); setError("");
+    const patientQuery = patientId ? `&patient_id=${encodeURIComponent(patientId)}` : "";
+    try {
+      const requests: [Promise<{ items: HistorySample[] }>, Promise<PatientStatistics | null>] = [
+        api(`/api/v1/posture/history?minutes=${period}${patientQuery}`, {}, session.access_token),
+        session.user.role === "patient"
+          ? api<PatientStatistics>(`/api/v1/patient/statistics?minutes=${period}`, {}, session.access_token)
+          : Promise.resolve(null),
+      ];
+      const [historyResponse, statisticsResponse] = await Promise.all(requests);
+      setHistory(historyResponse.items);
+      setStatistics(statisticsResponse);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Impossibile caricare lo storico.");
+    } finally {
+      setLoading(false);
+    }
+  }, [patientId, period, session.access_token, session.user.role]);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  useEffect(() => {
+    if (session.user.role !== "doctor" || !patientId) return;
+    api<MonitoringConfig>(`/api/v1/doctor/patients/${patientId}/monitoring-config`, {}, session.access_token)
+      .then((response) => {
+        setConfig(response);
+        setModerate(String(response.moderate_deviation_deg));
+        setMarked(String(response.marked_deviation_deg));
+        setPersistence(String(response.persistence_seconds));
+      })
+      .catch((caught) => setError(caught instanceof Error ? caught.message : "Impossibile caricare le configurazioni."));
+  }, [patientId, session.access_token, session.user.role]);
+
+  async function saveConfig() {
+    if (!patientId) return;
+    const values = { moderate_deviation_deg: Number(moderate.replace(",", ".")), marked_deviation_deg: Number(marked.replace(",", ".")), persistence_seconds: Number(persistence.replace(",", ".")) };
+    if (!Number.isFinite(values.moderate_deviation_deg) || !Number.isFinite(values.marked_deviation_deg) || !Number.isFinite(values.persistence_seconds)) {
+      Alert.alert("Valori non validi", "Inserisci valori numerici in tutti i campi.");
+      return;
+    }
+    if (values.marked_deviation_deg <= values.moderate_deviation_deg) {
+      Alert.alert("Soglie non valide", "La soglia marcata deve essere maggiore della soglia moderata.");
+      return;
+    }
+    setSavingConfig(true);
+    try {
+      const response = await api<MonitoringConfig>(`/api/v1/doctor/patients/${patientId}/monitoring-config`, { method: "PUT", body: JSON.stringify(values) }, session.access_token);
+      setConfig(response);
+      Alert.alert("Configurazione salvata", "Le nuove soglie saranno applicate al monitoraggio del paziente.");
+    } catch (caught) {
+      Alert.alert("Salvataggio non riuscito", caught instanceof Error ? caught.message : "Riprova più tardi.");
+    } finally {
+      setSavingConfig(false);
+    }
+  }
+
+  const chartSamples = history.length ? history : [{ timestamp: new Date().toISOString(), deviation_deg: 0, posture_status: "neutral" as PostureStatus, is_incorrect: false }];
+  const historyChartData = {
+    labels: chartSamples.map((sample, index) => index === 0 || index === chartSamples.length - 1 ? formatHistoryLabel(sample.timestamp, period) : ""),
+    datasets: [{ data: chartSamples.map((sample) => sample.deviation_deg), color: () => "#25a995", strokeWidth: 2 }],
+  };
+
+  return (
+    <>
+      <View style={styles.historyCard}>
+        <View style={styles.historyHeading}><View><Text style={styles.sectionTitle}>Storico posturale</Text><Text style={styles.mutedSmall}>Posture corrette e scorrette nel periodo selezionato</Text></View>{loading && <ActivityIndicator color="#087f6a" size="small" />}</View>
+        <View style={styles.periodRow}>{HISTORY_PERIODS.map((option) => <Pressable key={option.minutes} onPress={() => setPeriod(option.minutes)} style={[styles.periodButton, period === option.minutes && styles.periodButtonSelected]}><Text style={[styles.periodText, period === option.minutes && styles.periodTextSelected]}>{option.label}</Text></Pressable>)}</View>
+        <View style={styles.historyLegend}><View style={styles.legendItem}><View style={[styles.historyLegendDot, styles.correctDot]} /><Text style={styles.legendText}>Corretta</Text></View><View style={styles.legendItem}><View style={[styles.historyLegendDot, styles.incorrectDot]} /><Text style={styles.legendText}>Scorretta</Text></View></View>
+        <LineChart
+          data={historyChartData}
+          width={Math.max(280, width - 56)}
+          height={205}
+          withDots
+          withOuterLines={false}
+          yAxisSuffix="°"
+          getDotColor={(_, index) => chartSamples[index]?.is_incorrect ? "#d92d20" : "#25a995"}
+          chartConfig={{ backgroundGradientFrom: "#fff", backgroundGradientTo: "#fff", decimalPlaces: 0, color: (opacity = 1) => `rgba(37,169,149,${opacity})`, labelColor: (opacity = 1) => `rgba(71,84,103,${opacity})`, propsForDots: { r: "4", strokeWidth: "1", stroke: "#fff" }, propsForBackgroundLines: { stroke: "#e4eeeb", strokeDasharray: "4 4" } }}
+          style={styles.historyChart}
+        />
+        {!loading && history.length === 0 && <Text style={styles.noHistoryText}>Nessun dato disponibile nel periodo selezionato.</Text>}
+        {error ? <Text style={styles.formError}>{error}</Text> : null}
+      </View>
+
+      {session.user.role === "patient" && statistics && (
+        <View style={styles.statisticsCard}>
+          <Text style={styles.sectionTitle}>Le tue statistiche</Text>
+          <Text style={styles.mutedSmall}>Calcolate sul periodo selezionato</Text>
+          <View style={styles.statisticsGrid}>
+            <Statistic label="Postura corretta" value={`${statistics.correct_percentage}%`} color="#087f6a" />
+            <Statistic label="Postura scorretta" value={`${statistics.incorrect_percentage}%`} color="#d92d20" />
+            <Statistic label="Deviazione media" value={`${statistics.average_deviation_deg}°`} color="#315f78" />
+            <Statistic label="Deviazione massima" value={`${statistics.maximum_deviation_deg}°`} color="#b54708" />
+          </View>
+        </View>
+      )}
+
+      {session.user.role === "doctor" && config && (
+        <View style={styles.configCard}>
+          <Text style={styles.sectionTitle}>Parametri di monitoraggio</Text>
+          <Text style={styles.mutedSmall}>Configurazione specifica per {patient?.first_name || patient?.name}</Text>
+          <View style={styles.configGrid}>
+            <View style={styles.configField}><Field label="SOGLIA MODERATA (°)" value={moderate} onChangeText={setModerate} keyboardType="decimal-pad" placeholder="10" /></View>
+            <View style={styles.configField}><Field label="SOGLIA MARCATA (°)" value={marked} onChangeText={setMarked} keyboardType="decimal-pad" placeholder="20" /></View>
+          </View>
+          <Field label="PERSISTENZA PRIMA DELL'AVVISO (SECONDI)" value={persistence} onChangeText={setPersistence} keyboardType="decimal-pad" placeholder="5" />
+          <Text style={styles.configWarning}>Valori dimostrativi: richiedono validazione clinica prima di un uso sanitario.</Text>
+          <Pressable disabled={savingConfig} onPress={saveConfig} style={({ pressed }) => [styles.configSaveButton, pressed && styles.pressed]}>{savingConfig ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Salva parametri</Text>}</Pressable>
+        </View>
+      )}
+    </>
+  );
+}
+
+function Statistic({ label, value, color }: { label: string; value: string; color: string }) {
+  return <View style={styles.statisticBox}><Text style={[styles.statisticValue, { color }]}>{value}</Text><Text style={styles.statisticLabel}>{label}</Text></View>;
 }
 
 function ProfileScreen({
@@ -606,6 +749,13 @@ function InfoCard({ icon, label, value }: { icon: string; label: string; value: 
   return <View style={styles.infoCard}><Text style={styles.infoIcon}>{icon}</Text><View style={{ flex: 1 }}><Text style={styles.metricLabel}>{label}</Text><Text numberOfLines={1} style={styles.infoValue}>{value}</Text></View></View>;
 }
 
+function formatHistoryLabel(timestamp: string, period: HistoryPeriod) {
+  const date = new Date(timestamp);
+  return period >= 1440
+    ? date.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" })
+    : date.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+}
+
 function formatSigned(value: number) { return `${value > 0 ? "+" : ""}${value.toFixed(1)}°`; }
 
 function isValidFiscalCode(value: string) {
@@ -661,4 +811,7 @@ const styles = StyleSheet.create({
   profileCard: { backgroundColor: "#fff", borderRadius: 21, paddingHorizontal: 17 }, profileInfo: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#e6efed" }, profileInfoLast: { borderBottomWidth: 0 }, profileInfoLabel: { color: "#78908a", fontSize: 9, fontWeight: "900", letterSpacing: 0.8 }, profileInfoValue: { color: "#153d35", fontSize: 15, fontWeight: "700", marginTop: 4 },
   profileMenu: { backgroundColor: "#fff", borderRadius: 21, paddingHorizontal: 15 }, menuButton: { minHeight: 72, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: 1, borderBottomColor: "#e6efed" }, menuButtonLast: { borderBottomWidth: 0 }, menuButtonPressed: { opacity: 0.65 }, menuIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#dff5f0", alignItems: "center", justifyContent: "center" }, menuIconDanger: { backgroundColor: "#fee9e7" }, menuIconText: { color: "#087f6a", fontSize: 17, fontWeight: "900" }, menuDangerText: { color: "#b42318" }, menuCopy: { flex: 1 }, menuTitle: { color: "#153d35", fontSize: 14, fontWeight: "900" }, menuSubtitle: { color: "#78908a", fontSize: 10, marginTop: 3 }, menuChevron: { color: "#6f9189", fontSize: 26 },
   formCard: { backgroundColor: "#fff", borderRadius: 23, padding: 19 }, passwordHint: { color: "#78908a", fontSize: 10, lineHeight: 15, marginTop: 11 }, settingsCard: { backgroundColor: "#fff", borderRadius: 21, padding: 17, flexDirection: "row", alignItems: "center", gap: 12 }, settingIcon: { width: 45, height: 45, borderRadius: 23, backgroundColor: "#dff5f0", alignItems: "center", justifyContent: "center" }, settingIconText: { color: "#087f6a", fontSize: 22 }, settingCopy: { flex: 1 }, settingTitle: { color: "#153d35", fontSize: 15, fontWeight: "900" }, settingText: { color: "#78908a", fontSize: 10, lineHeight: 15, marginTop: 3 }, soonBadge: { backgroundColor: "#edf4f2", borderRadius: 10, paddingHorizontal: 7, paddingVertical: 5 }, soonText: { color: "#608078", fontSize: 7, fontWeight: "900", letterSpacing: 0.4 }, settingsNote: { color: "#78908a", fontSize: 11, lineHeight: 17, textAlign: "center", paddingHorizontal: 18 },
+  historyCard: { backgroundColor: "#fff", borderRadius: 21, paddingTop: 17, overflow: "hidden" }, historyHeading: { minHeight: 38, paddingHorizontal: 17, flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }, periodRow: { flexDirection: "row", gap: 6, paddingHorizontal: 14, marginTop: 14 }, periodButton: { flex: 1, minHeight: 34, borderRadius: 11, borderWidth: 1, borderColor: "#d6e5e1", alignItems: "center", justifyContent: "center", backgroundColor: "#fbfefd" }, periodButtonSelected: { backgroundColor: "#087f6a", borderColor: "#087f6a" }, periodText: { color: "#5d7771", fontSize: 9, fontWeight: "800" }, periodTextSelected: { color: "#fff" }, historyLegend: { flexDirection: "row", justifyContent: "flex-end", gap: 13, paddingHorizontal: 17, marginTop: 12 }, legendItem: { flexDirection: "row", alignItems: "center", gap: 5 }, historyLegendDot: { width: 8, height: 8, borderRadius: 4 }, correctDot: { backgroundColor: "#25a995" }, incorrectDot: { backgroundColor: "#d92d20" }, historyChart: { marginLeft: -13, marginTop: 2 }, noHistoryText: { color: "#78908a", fontSize: 10, textAlign: "center", paddingHorizontal: 16, paddingBottom: 15, marginTop: -7 },
+  statisticsCard: { backgroundColor: "#fff", borderRadius: 21, padding: 17 }, statisticsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 9, marginTop: 14 }, statisticBox: { width: "48%", flexGrow: 1, minHeight: 82, borderRadius: 15, backgroundColor: "#f3f8f7", padding: 13, justifyContent: "center" }, statisticValue: { fontSize: 22, fontWeight: "900" }, statisticLabel: { color: "#6b817c", fontSize: 10, fontWeight: "700", marginTop: 4 },
+  configCard: { backgroundColor: "#fff", borderRadius: 21, padding: 17 }, configGrid: { flexDirection: "row", gap: 9 }, configField: { flex: 1 }, configWarning: { color: "#9a6500", backgroundColor: "#fff7e6", borderRadius: 11, padding: 10, fontSize: 9, lineHeight: 14, marginTop: 13 }, configSaveButton: { minHeight: 48, borderRadius: 14, backgroundColor: "#087f6a", alignItems: "center", justifyContent: "center", marginTop: 13 },
 });

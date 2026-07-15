@@ -241,3 +241,45 @@ Dare priorità alla lista dei pazienti associati, semplificare l'aggiunta di un 
 ### Nota
 
 Il paziente può essere associato soltanto se è già registrato e il codice fiscale inserito coincide con quello salvato nel suo profilo.
+
+## 15 luglio 2026 — Storico posturale, statistiche e configurazioni cliniche
+
+### Obiettivo
+
+Integrare una vista storica per paziente, statistiche personali e parametri di monitoraggio configurabili dal Medico.
+
+### Modifiche
+
+- Aggiunto un grafico storico sotto il grafico in tempo reale.
+- Aggiunta la selezione del periodo tra 1 ora, 6 ore, 24 ore e 7 giorni.
+- Evidenziati in verde-acqua i campioni corretti e in rosso quelli classificati come scorretti.
+- Reso lo storico disponibile al Paziente per i propri dati e al Medico per ogni paziente associato selezionato.
+- Protetti gli endpoint affinché un Paziente non possa leggere dati altrui e un Medico possa leggere soltanto i pazienti associati.
+- Aggiunte per il Paziente statistiche su percentuale corretta, percentuale scorretta, deviazione media e deviazione massima.
+- Aggiunta per il Medico la gestione di soglia moderata, soglia marcata e tempo di persistenza per ciascun paziente.
+- Creata in SQLite la tabella `monitoring_configs` per la persistenza delle configurazioni individuali.
+- Collegata la configurazione individuale al calcolo posturale eseguito dal backend.
+- Campionato lo storico InfluxDB in circa 240 punti per periodo, mantenendo il grafico leggibile anche su intervalli lunghi.
+- Corretta la query InfluxDB per evitare punti duplicati generati dalle serie separate per stato posturale.
+
+### File interessati
+
+- `mobile/app/App.tsx`
+- `backend/app/main.py`
+- `REPORT_TEMPORANEI/REGISTRO_MODIFICHE.md`
+
+### Verifiche
+
+- Controllo TypeScript completato senza errori.
+- Controllo della sintassi Python completato senza errori.
+- Bundle Android Expo generata correttamente.
+- Test integrato dello storico completato su dati InfluxDB reali del simulatore.
+- Test integrato delle statistiche personali completato.
+- Test GET e PUT delle configurazioni Medico completato con successo.
+- Verificata la rimozione delle sessioni temporanee usate nei test.
+
+### Note e limiti
+
+- Le statistiche sono calcolate sui campioni aggregati del periodo selezionato.
+- Le soglie iniziali restano dimostrative e non validate per uso clinico.
+- I valori dovranno essere giustificati tramite fonti mediche e formalizzati nella futura documentazione tecnica.

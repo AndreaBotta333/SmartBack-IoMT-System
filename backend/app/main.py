@@ -138,6 +138,18 @@ class AssociatePatientRequest(BaseModel):
         return normalized
 
 
+class MonitoringConfigRequest(BaseModel):
+    moderate_deviation_deg: float = Field(ge=1, le=45)
+    marked_deviation_deg: float = Field(ge=2, le=60)
+    persistence_seconds: float = Field(ge=1, le=300)
+
+    @model_validator(mode="after")
+    def validate_threshold_order(self):
+        if self.marked_deviation_deg <= self.moderate_deviation_deg:
+            raise ValueError("La soglia marcata deve essere maggiore della soglia moderata")
+        return self
+
+
 def is_valid_fiscal_code(value: str) -> bool:
     code = value.upper().replace(" ", "")
     pattern = r"^[A-Z]{6}[0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{3}[A-Z]$"
@@ -177,6 +189,16 @@ def init_auth_db() -> sqlite3.Connection:
             PRIMARY KEY (doctor_id, patient_id),
             FOREIGN KEY(doctor_id) REFERENCES users(id),
             FOREIGN KEY(patient_id) REFERENCES users(id)
+        );
+        CREATE TABLE IF NOT EXISTS monitoring_configs (
+            patient_id TEXT PRIMARY KEY,
+            moderate_deviation_deg REAL NOT NULL,
+            marked_deviation_deg REAL NOT NULL,
+            persistence_seconds REAL NOT NULL,
+            updated_at TEXT NOT NULL,
+            updated_by TEXT,
+            FOREIGN KEY(patient_id) REFERENCES users(id),
+            FOREIGN KEY(updated_by) REFERENCES users(id)
         );
     """)
     columns = {row[1] for row in connection.execute("PRAGMA table_info(users)").fetchall()}
@@ -248,6 +270,49 @@ def current_user(authorization: str | None = Header(default=None)) -> sqlite3.Ro
     return row
 
 
+def monitoring_config_for_patient(patient: sqlite3.Row) -> dict[str, float]:
+    row = auth_db.execute(
+        "SELECT moderate_deviation_deg,marked_deviation_deg,persistence_seconds FROM monitoring_configs WHERE patient_id=?",
+        (patient["id"],),
+    ).fetchone()
+    return {
+        "moderate_deviation_deg": float(row["moderate_deviation_deg"]) if row else MODERATE_DEVIATION_DEG,
+        "marked_deviation_deg": float(row["marked_deviation_deg"]) if row else MARKED_DEVIATION_DEG,
+        "persistence_seconds": float(row["persistence_seconds"]) if row else PERSISTENCE_SECONDS,
+    }
+
+
+def monitoring_config_for_patient_code(patient_code: str) -> dict[str, float]:
+    patient = auth_db.execute(
+        "SELECT * FROM users WHERE patient_code=? AND role='patient'", (patient_code,)
+    ).fetchone()
+    if patient is None:
+        return {
+            "moderate_deviation_deg": MODERATE_DEVIATION_DEG,
+            "marked_deviation_deg": MARKED_DEVIATION_DEG,
+            "persistence_seconds": PERSISTENCE_SECONDS,
+        }
+    return monitoring_config_for_patient(patient)
+
+
+def accessible_patient(user: sqlite3.Row, patient_id: str | None = None) -> sqlite3.Row:
+    if user["role"] == "patient":
+        if patient_id and patient_id != user["id"]:
+            raise HTTPException(status_code=403, detail="Non puoi visualizzare i dati di un altro paziente")
+        return user
+    if not patient_id:
+        raise HTTPException(status_code=400, detail="Seleziona un paziente")
+    patient = auth_db.execute(
+        "SELECT patients.* FROM doctor_patients links "
+        "JOIN users patients ON patients.id=links.patient_id "
+        "WHERE links.doctor_id=? AND patients.id=?",
+        (user["id"], patient_id),
+    ).fetchone()
+    if patient is None:
+        raise HTTPException(status_code=403, detail="Paziente non associato al medico")
+    return patient
+
+
 def vector_pitch(x: float, y: float, z: float) -> float:
     return math.degrees(math.atan2(y, math.sqrt(x * x + z * z)))
 
@@ -261,6 +326,10 @@ def process_posture(payload: dict[str, Any]) -> dict[str, Any]:
     pitch = vector_pitch(float(payload["x"]), float(payload["y"]), float(payload["z"]))
     roll = vector_roll(float(payload["x"]), float(payload["y"]), float(payload["z"]))
     timestamp_ms = int(payload["timestamp"])
+    config = monitoring_config_for_patient_code(str(payload["patient_id"]))
+    moderate_deviation_deg = config["moderate_deviation_deg"]
+    marked_deviation_deg = config["marked_deviation_deg"]
+    persistence_seconds = config["persistence_seconds"]
 
     with state_lock:
         if device_id not in reference_pitch_by_device:
@@ -268,18 +337,18 @@ def process_posture(payload: dict[str, Any]) -> dict[str, Any]:
         reference = reference_pitch_by_device[device_id]
         deviation = pitch - reference
 
-        if abs(deviation) >= MODERATE_DEVIATION_DEG:
+        if abs(deviation) >= moderate_deviation_deg:
             deviation_started_by_device.setdefault(device_id, timestamp_ms / 1000)
         else:
             deviation_started_by_device.pop(device_id, None)
         started = deviation_started_by_device.get(device_id)
         duration = max(0.0, timestamp_ms / 1000 - started) if started else 0.0
 
-    if abs(deviation) >= MARKED_DEVIATION_DEG and duration >= PERSISTENCE_SECONDS:
+    if abs(deviation) >= marked_deviation_deg and duration >= persistence_seconds:
         status, alert = "marked_deviation", "POSTURE_MARKED_DEVIATION"
-    elif abs(deviation) >= MODERATE_DEVIATION_DEG and duration >= PERSISTENCE_SECONDS:
+    elif abs(deviation) >= moderate_deviation_deg and duration >= persistence_seconds:
         status, alert = "prolonged_deviation", "POSTURE_PROLONGED_DEVIATION"
-    elif abs(deviation) >= MODERATE_DEVIATION_DEG:
+    elif abs(deviation) >= moderate_deviation_deg:
         status, alert = "deviated", None
     else:
         status, alert = "neutral", None
@@ -293,7 +362,7 @@ def process_posture(payload: dict[str, Any]) -> dict[str, Any]:
         "deviation_duration_seconds": round(duration, 1),
         "posture_status": status,
         "alert": alert,
-        "threshold_profile": "demo-not-clinical",
+        "threshold_profile": f"patient:{payload['patient_id']}",
     }
 
 
@@ -534,23 +603,99 @@ def calibrate(device_id: str):
         return {"device_id": device_id, "reference_pitch_deg": reference_pitch_by_device[device_id]}
 
 
-@app.get("/api/v1/posture/history")
-def posture_history(minutes: int = 10, limit: int = 600):
-    minutes = min(max(minutes, 1), 1440)
-    limit = min(max(limit, 1), 5000)
+def query_posture_history(patient_code: str, minutes: int, limit: int = 600) -> list[dict[str, Any]]:
+    minutes = min(max(minutes, 1), 10080)
+    limit = min(max(limit, 1), 1200)
+    window_seconds = max(1, math.ceil(minutes * 60 / 240))
+    config = monitoring_config_for_patient_code(patient_code)
     query = f'''from(bucket: "{INFLUX_BUCKET}")
       |> range(start: -{minutes}m)
       |> filter(fn: (r) => r._measurement == "posture")
-      |> filter(fn: (r) => r._field == "deviation_deg" or r._field == "pitch_deg")
+      |> filter(fn: (r) => r._field == "deviation_deg")
+      |> filter(fn: (r) => r.patient_id == "{patient_code}")
+      |> group(columns: ["patient_id"])
+      |> aggregateWindow(every: {window_seconds}s, fn: mean, createEmpty: false)
+      |> sort(columns: ["_time"])
       |> limit(n: {limit})'''
     tables = influx_client.query_api().query(query=query, org=INFLUX_ORG)
-    rows = []
+    rows: list[dict[str, Any]] = []
     for table in tables:
         for record in table.records:
-            rows.append({"timestamp": record.get_time().isoformat(), "field": record.get_field(), "value": record.get_value(), "device_id": record.values.get("device_id"), "patient_id": record.values.get("patient_id")})
-    rows.sort(key=lambda item: item["timestamp"], reverse=True)
-    rows = rows[:limit]
-    return {"items": rows, "count": len(rows)}
+            deviation = round(float(record.get_value()), 2)
+            if abs(deviation) >= config["marked_deviation_deg"]:
+                status = "marked_deviation"
+            elif abs(deviation) >= config["moderate_deviation_deg"]:
+                status = "deviated"
+            else:
+                status = "neutral"
+            rows.append({
+                "timestamp": record.get_time().isoformat(),
+                "deviation_deg": deviation,
+                "posture_status": status,
+                "is_incorrect": status != "neutral",
+            })
+    rows.sort(key=lambda item: item["timestamp"])
+    return rows[-limit:]
+
+
+@app.get("/api/v1/posture/history")
+def posture_history(
+    minutes: int = 60,
+    patient_id: str | None = None,
+    user: sqlite3.Row = Depends(current_user),
+):
+    patient = accessible_patient(user, patient_id)
+    rows = query_posture_history(patient["patient_code"], minutes)
+    return {"items": rows, "count": len(rows), "minutes": min(max(minutes, 1), 10080)}
+
+
+@app.get("/api/v1/patient/statistics")
+def patient_statistics(minutes: int = 60, user: sqlite3.Row = Depends(current_user)):
+    if user["role"] != "patient":
+        raise HTTPException(status_code=403, detail="Le statistiche personali sono riservate al paziente")
+    rows = query_posture_history(user["patient_code"], minutes)
+    count = len(rows)
+    incorrect = sum(1 for row in rows if row["is_incorrect"])
+    absolute_values = [abs(float(row["deviation_deg"])) for row in rows]
+    return {
+        "period_minutes": min(max(minutes, 1), 10080),
+        "samples": count,
+        "correct_percentage": round((count - incorrect) * 100 / count, 1) if count else 0,
+        "incorrect_percentage": round(incorrect * 100 / count, 1) if count else 0,
+        "average_deviation_deg": round(sum(absolute_values) / count, 1) if count else 0,
+        "maximum_deviation_deg": round(max(absolute_values), 1) if count else 0,
+    }
+
+
+@app.get("/api/v1/doctor/patients/{patient_id}/monitoring-config")
+def get_monitoring_config(patient_id: str, user: sqlite3.Row = Depends(current_user)):
+    if user["role"] != "doctor":
+        raise HTTPException(status_code=403, detail="Accesso riservato al medico")
+    patient = accessible_patient(user, patient_id)
+    return monitoring_config_for_patient(patient)
+
+
+@app.put("/api/v1/doctor/patients/{patient_id}/monitoring-config")
+def update_monitoring_config(
+    patient_id: str,
+    body: MonitoringConfigRequest,
+    user: sqlite3.Row = Depends(current_user),
+):
+    if user["role"] != "doctor":
+        raise HTTPException(status_code=403, detail="Accesso riservato al medico")
+    patient = accessible_patient(user, patient_id)
+    auth_db.execute(
+        "INSERT INTO monitoring_configs(patient_id,moderate_deviation_deg,marked_deviation_deg,persistence_seconds,updated_at,updated_by) "
+        "VALUES (?,?,?,?,?,?) ON CONFLICT(patient_id) DO UPDATE SET "
+        "moderate_deviation_deg=excluded.moderate_deviation_deg,"
+        "marked_deviation_deg=excluded.marked_deviation_deg,"
+        "persistence_seconds=excluded.persistence_seconds,"
+        "updated_at=excluded.updated_at,updated_by=excluded.updated_by",
+        (patient["id"], body.moderate_deviation_deg, body.marked_deviation_deg, body.persistence_seconds,
+         datetime.now(timezone.utc).isoformat(), user["id"]),
+    )
+    auth_db.commit()
+    return monitoring_config_for_patient(patient)
 
 
 @app.websocket("/ws/wearable")
