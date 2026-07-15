@@ -127,7 +127,15 @@ class ChangePasswordRequest(BaseModel):
 
 
 class AssociatePatientRequest(BaseModel):
-    email: EmailStr
+    fiscal_code: str = Field(min_length=16, max_length=16)
+
+    @field_validator("fiscal_code")
+    @classmethod
+    def validate_fiscal_code(cls, value: str) -> str:
+        normalized = value.upper().replace(" ", "")
+        if not is_valid_fiscal_code(normalized):
+            raise ValueError("Codice fiscale non valido")
+        return normalized
 
 
 def is_valid_fiscal_code(value: str) -> bool:
@@ -467,10 +475,10 @@ def associate_patient(body: AssociatePatientRequest, user: sqlite3.Row = Depends
     if user["role"] != "doctor":
         raise HTTPException(status_code=403, detail="Accesso riservato a medici e fisioterapisti")
     patient = auth_db.execute(
-        "SELECT * FROM users WHERE email=? AND role='patient'", (body.email.lower().strip(),)
+        "SELECT * FROM users WHERE fiscal_code=? AND role='patient'", (body.fiscal_code,)
     ).fetchone()
     if patient is None:
-        raise HTTPException(status_code=404, detail="Nessun paziente registrato con questa email")
+        raise HTTPException(status_code=404, detail="Nessun paziente registrato con questo codice fiscale")
     try:
         auth_db.execute(
             "INSERT INTO doctor_patients(doctor_id,patient_id,created_at) VALUES (?,?,?)",

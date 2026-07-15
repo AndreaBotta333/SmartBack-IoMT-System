@@ -207,3 +207,37 @@ Migliorare l'impaginazione delle schermate operative e introdurre una navigazion
 
 - Verificare visivamente le nuove schermate su più modelli di telefono.
 - Definire e implementare in seguito le preferenze effettive della pagina Impostazioni.
+
+## 15 luglio 2026 — Riorganizzazione directory pazienti del Medico
+
+### Obiettivo
+
+Dare priorità alla lista dei pazienti associati, semplificare l'aggiunta di un paziente e alleggerire l'intestazione operativa.
+
+### Modifiche
+
+- Adeguata la scritta `SmartBack` nell'intestazione ai colori blu e ai pesi tipografici del logo originale.
+- Rimosso il badge di connessione `Live` dall'intestazione, mantenendo l'avatar del profilo.
+- Conservato il badge `Live` esclusivamente sulle schede dei pazienti attivi nella lista del Medico.
+- Spostata la lista dei pazienti associati prima dei controlli di aggiunta.
+- Mantenuto uno stato vuoto esplicito quando il Medico non ha pazienti associati.
+- Aggiunto sotto la lista un pulsante `+ Associa un paziente`.
+- Implementato un pannello espandibile per inserire il codice fiscale del paziente.
+- Sostituita nel backend l'associazione tramite email con l'associazione tramite codice fiscale validato.
+
+### File interessati
+
+- `mobile/app/App.tsx`
+- `backend/app/main.py`
+- `REPORT_TEMPORANEI/REGISTRO_MODIFICHE.md`
+
+### Verifiche
+
+- Controllo TypeScript completato senza errori.
+- Controllo della sintassi Python completato senza errori.
+- Bundle Android Expo generata correttamente.
+- Backend ricostruito e riavviato correttamente.
+
+### Nota
+
+Il paziente può essere associato soltanto se è già registrato e il codice fiscale inserito coincide con quello salvato nel suo profilo.

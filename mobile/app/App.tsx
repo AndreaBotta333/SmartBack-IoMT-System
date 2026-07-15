@@ -30,7 +30,6 @@ type PostureSample = {
   posture_status: PostureStatus; alert: string | null; threshold_profile: string;
 };
 type DeviceStatus = { device_id: string; state_of_charge?: number; charging?: boolean };
-type ConnectionState = "connecting" | "connected" | "disconnected";
 type AppScreen = "dashboard" | "profile" | "password" | "settings";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -244,12 +243,12 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
   const [screen, setScreen] = useState<AppScreen>("dashboard");
   const [samples, setSamples] = useState<PostureSample[]>([]);
   const [device, setDevice] = useState<DeviceStatus | null>(null);
-  const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [message, setMessage] = useState("");
   const [calibrating, setCalibrating] = useState(false);
   const [doctorPatients, setDoctorPatients] = useState<DoctorPatient[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<DoctorPatient | null>(null);
-  const [associationEmail, setAssociationEmail] = useState("");
+  const [associationFiscalCode, setAssociationFiscalCode] = useState("");
+  const [associationOpen, setAssociationOpen] = useState(false);
   const [patientsLoading, setPatientsLoading] = useState(session.user.role === "doctor");
   const [associating, setAssociating] = useState(false);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -290,9 +289,8 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
     let socket: WebSocket | null = null;
     function connect() {
       if (!active) return;
-      setConnection("connecting");
       socket = new WebSocket(WS_URL);
-      socket.onopen = () => { if (active) { setConnection("connected"); setMessage(""); } };
+      socket.onopen = () => { if (active) setMessage(""); };
       socket.onmessage = (event) => {
         try {
           const sample = JSON.parse(event.data) as PostureSample;
@@ -302,7 +300,6 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
       socket.onerror = () => socket?.close();
       socket.onclose = () => {
         if (!active) return;
-        setConnection("disconnected");
         setMessage("Connessione in pausa. Riprovo automaticamente…");
         reconnectTimer.current = setTimeout(connect, 3000);
       };
@@ -317,15 +314,16 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
   }), [visibleSamples]);
 
   async function associatePatient() {
-    const email = associationEmail.trim().toLowerCase();
-    if (!EMAIL_PATTERN.test(email)) {
-      Alert.alert("Email non valida", "Inserisci l’email usata dal paziente per registrarsi.");
+    const fiscalCode = associationFiscalCode.toUpperCase().replace(/\s/g, "");
+    if (!isValidFiscalCode(fiscalCode)) {
+      Alert.alert("Codice fiscale non valido", "Inserisci il codice fiscale completo e corretto del paziente.");
       return;
     }
     setAssociating(true);
     try {
-      await api("/api/v1/doctor/patients", { method: "POST", body: JSON.stringify({ email }) }, session.access_token);
-      setAssociationEmail("");
+      await api("/api/v1/doctor/patients", { method: "POST", body: JSON.stringify({ fiscal_code: fiscalCode }) }, session.access_token);
+      setAssociationFiscalCode("");
+      setAssociationOpen(false);
       await loadDoctorPatients();
       Alert.alert("Associazione completata", "Il paziente è stato aggiunto alla tua lista.");
     } catch (caught) {
@@ -345,16 +343,14 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
     finally { setCalibrating(false); }
   }
 
-  const connectionLabel = connection === "connected" ? "Live" : connection === "connecting" ? "Connessione…" : "Offline";
   const roleLabel = session.user.role === "doctor" ? "Medico" : "Paziente";
 
   return (
     <SafeAreaView edges={["top", "left", "right"]} style={styles.dashboardSafe}>
       <StatusBar style="dark" />
       <View style={styles.fixedHeader}>
-        <Pressable onPress={() => setScreen("dashboard")}><Text style={styles.headerBrand}>SmartBack</Text></Pressable>
+        <Pressable onPress={() => setScreen("dashboard")}><Text style={styles.headerBrandSmart}>Smart<Text style={styles.headerBrandBack}>Back</Text></Text></Pressable>
         <View style={styles.headerRight}>
-          <View style={styles.liveBadge}><View style={[styles.liveDot, connection !== "connected" && styles.liveDotOffline]} /><Text style={styles.liveText}>{connectionLabel}</Text></View>
           <Pressable accessibilityLabel="Apri il profilo" onPress={() => setScreen("profile")} style={[styles.avatar, screen === "profile" && styles.avatarSelected]}><Text style={styles.avatarText}>{session.user.name.charAt(0).toUpperCase()}</Text></Pressable>
         </View>
       </View>
@@ -376,8 +372,10 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
           <DoctorPatientDirectory
             patients={doctorPatients}
             loading={patientsLoading}
-            email={associationEmail}
-            onEmailChange={setAssociationEmail}
+            fiscalCode={associationFiscalCode}
+            onFiscalCodeChange={setAssociationFiscalCode}
+            associationOpen={associationOpen}
+            onToggleAssociation={() => setAssociationOpen((current) => !current)}
             associating={associating}
             onAssociate={associatePatient}
             onSelect={setSelectedPatient}
@@ -543,25 +541,14 @@ function MenuButton({ icon, title, subtitle, onPress, danger = false, last = fal
 }
 
 function DoctorPatientDirectory({
-  patients, loading, email, onEmailChange, associating, onAssociate, onSelect,
+  patients, loading, fiscalCode, onFiscalCodeChange, associationOpen, onToggleAssociation, associating, onAssociate, onSelect,
 }: {
-  patients: DoctorPatient[]; loading: boolean; email: string;
-  onEmailChange: (value: string) => void; associating: boolean;
+  patients: DoctorPatient[]; loading: boolean; fiscalCode: string;
+  onFiscalCodeChange: (value: string) => void; associationOpen: boolean; onToggleAssociation: () => void; associating: boolean;
   onAssociate: () => void; onSelect: (patient: DoctorPatient) => void;
 }) {
   return (
     <>
-      <View style={styles.associationCard}>
-        <View style={styles.associationHeading}>
-          <View style={styles.addCircle}><Text style={styles.addSymbol}>+</Text></View>
-          <View style={{ flex: 1 }}><Text style={styles.sectionTitle}>Associa un paziente</Text><Text style={styles.mutedSmall}>Usa l’email con cui il paziente si è registrato</Text></View>
-        </View>
-        <Field label="EMAIL DEL PAZIENTE" value={email} onChangeText={onEmailChange} keyboardType="email-address" autoCapitalize="none" placeholder="paziente@email.it" />
-        <Pressable disabled={associating} onPress={onAssociate} style={({ pressed }) => [styles.associateButton, pressed && styles.pressed]}>
-          {associating ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Aggiungi alla lista</Text>}
-        </Pressable>
-      </View>
-
       <View style={styles.directoryHeader}>
         <Text style={styles.directoryTitle}>I miei pazienti</Text>
         <View style={styles.countBadge}><Text style={styles.countText}>{patients.length}</Text></View>
@@ -569,7 +556,7 @@ function DoctorPatientDirectory({
       {loading ? (
         <ActivityIndicator style={{ marginVertical: 32 }} color="#087f6a" size="large" />
       ) : patients.length === 0 ? (
-        <View style={styles.emptyPatients}><Text style={styles.emptyIcon}>◎</Text><Text style={styles.waitingTitle}>Nessun paziente associato</Text><Text style={styles.emptyText}>Aggiungi un paziente tramite email per visualizzarlo qui.</Text></View>
+        <View style={styles.emptyPatients}><Text style={styles.emptyIcon}>◎</Text><Text style={styles.waitingTitle}>Nessun paziente associato</Text><Text style={styles.emptyText}>Premi il pulsante + per associare il tuo primo paziente tramite codice fiscale.</Text></View>
       ) : patients.map((patient) => (
         <Pressable key={patient.id} onPress={() => onSelect(patient)} style={({ pressed }) => [styles.patientCard, pressed && styles.patientCardPressed]}>
           <View style={styles.patientAvatar}><Text style={styles.patientAvatarText}>{patient.name.charAt(0).toUpperCase()}</Text></View>
@@ -577,6 +564,22 @@ function DoctorPatientDirectory({
           <View style={styles.patientCardRight}>{patient.has_live_data && <View style={styles.onlineBadge}><View style={styles.miniDot} /><Text style={styles.onlineText}>Live</Text></View>}<Text style={styles.chevron}>›</Text></View>
         </Pressable>
       ))}
+
+      <Pressable accessibilityLabel={associationOpen ? "Chiudi aggiunta paziente" : "Aggiungi paziente"} onPress={onToggleAssociation} style={({ pressed }) => [styles.addPatientButton, associationOpen && styles.addPatientButtonOpen, pressed && styles.pressed]}>
+        <Text style={[styles.addPatientPlus, associationOpen && styles.addPatientPlusOpen]}>{associationOpen ? "×" : "+"}</Text>
+        <Text style={[styles.addPatientText, associationOpen && styles.addPatientTextOpen]}>{associationOpen ? "Chiudi" : "Associa un paziente"}</Text>
+      </Pressable>
+
+      {associationOpen && (
+        <View style={styles.associationDropdown}>
+          <Text style={styles.sectionTitle}>Nuova associazione</Text>
+          <Text style={styles.mutedSmall}>Inserisci il codice fiscale usato dal paziente durante la registrazione.</Text>
+          <Field label="CODICE FISCALE DEL PAZIENTE" value={fiscalCode} onChangeText={onFiscalCodeChange} autoCapitalize="characters" autoCorrect={false} maxLength={16} placeholder="RSSMRA80A01H501U" />
+          <Pressable disabled={associating} onPress={onAssociate} style={({ pressed }) => [styles.associateButton, pressed && styles.pressed]}>
+            {associating ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Conferma associazione</Text>}
+          </Pressable>
+        </View>
+      )}
     </>
   );
 }
@@ -637,8 +640,8 @@ const styles = StyleSheet.create({
   formError: { color: "#b42318", fontSize: 12, marginTop: 13, lineHeight: 17 }, primaryButton: { minHeight: 52, borderRadius: 15, backgroundColor: "#087f6a", alignItems: "center", justifyContent: "center", marginTop: 18, paddingHorizontal: 18 },
   primaryText: { color: "#fff", fontWeight: "900", fontSize: 15 }, pressed: { opacity: 0.82 }, switchText: { color: "#54756e", textAlign: "center", fontWeight: "600", marginTop: 20, fontSize: 13 }, switchLink: { color: "#087f6a", fontWeight: "900", textDecorationLine: "underline" }, demoNote: { color: "#71918a", marginTop: 24, fontSize: 10, textAlign: "center" },
   dashboardSafe: { flex: 1, backgroundColor: "#f1f7f5" }, fixedHeader: { minHeight: 68, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#dceae6", paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between", zIndex: 10 },
-  headerBrand: { color: "#123c34", fontSize: 23, lineHeight: 27, fontWeight: "900", letterSpacing: -0.8 },
-  headerRight: { flexDirection: "row", alignItems: "center", gap: 10 }, liveBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#edf8f5", paddingHorizontal: 9, paddingVertical: 7, borderRadius: 18 }, liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#12b76a" }, liveDotOffline: { backgroundColor: "#98a2b3" }, liveText: { color: "#42655f", fontSize: 10, fontWeight: "800" },
+  headerBrandSmart: { color: "#123f70", fontSize: 23, lineHeight: 27, fontWeight: "900", letterSpacing: -0.8 }, headerBrandBack: { color: "#123f70", fontWeight: "400", letterSpacing: -0.5 },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 10 }, liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#12b76a" },
   avatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#c8eee6", alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "transparent" }, avatarSelected: { borderColor: "#087f6a", backgroundColor: "#e3f7f2" }, avatarText: { color: "#087f6a", fontWeight: "900" }, dashboardContent: { padding: 18, paddingBottom: 38, gap: 14 },
   welcome: { color: "#153d35", fontSize: 24, fontWeight: "900", letterSpacing: -0.5 }, roleCaption: { color: "#6b817c", marginTop: 3, fontSize: 12 }, waitingCard: { minHeight: 260, borderRadius: 24, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", gap: 10, padding: 24 }, waitingTitle: { color: "#153d35", fontSize: 18, fontWeight: "800" }, muted: { color: "#6b817c", fontSize: 12 },
   patientStrip: { backgroundColor: "#dff4ef", borderRadius: 16, padding: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, overline: { color: "#438579", fontSize: 8, fontWeight: "900", letterSpacing: 1 }, patientName: { color: "#153d35", fontWeight: "800", marginTop: 3 }, patientCode: { color: "#5f817a", fontSize: 9 },
@@ -648,7 +651,8 @@ const styles = StyleSheet.create({
   whiteCard: { backgroundColor: "#fff", borderRadius: 21, paddingTop: 17, overflow: "hidden" }, sectionHeading: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", paddingHorizontal: 17 }, sectionTitle: { color: "#153d35", fontSize: 16, fontWeight: "900" }, mutedSmall: { color: "#78908a", fontSize: 10, marginTop: 3 }, legendDot: { flexDirection: "row", alignItems: "center", gap: 5 }, miniDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#087f6a" }, legendText: { color: "#78908a", fontSize: 9 }, chart: { marginLeft: -13, marginTop: 8 },
   infoGrid: { flexDirection: "row", gap: 9 }, infoCard: { flex: 1, backgroundColor: "#fff", borderRadius: 16, padding: 13, flexDirection: "row", alignItems: "center", gap: 9 }, infoIcon: { color: "#20a38c", fontSize: 20 }, infoValue: { color: "#153d35", fontWeight: "800", fontSize: 12, marginTop: 3 },
   notificationCard: { backgroundColor: "#dff5f0", borderRadius: 17, padding: 14, flexDirection: "row", alignItems: "center", gap: 12 }, bellCircle: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#b9e9df", alignItems: "center", justifyContent: "center" }, bell: { color: "#087f6a", fontSize: 17 }, notificationTitle: { color: "#153d35", fontWeight: "900", fontSize: 13 }, notificationText: { color: "#56766f", fontSize: 10, lineHeight: 15, marginTop: 2 }, message: { color: "#42655f", textAlign: "center", fontSize: 11 }, disclaimer: { color: "#8ba09b", textAlign: "center", fontSize: 9, marginTop: 4 },
-  associationCard: { backgroundColor: "#fff", borderRadius: 21, padding: 17 }, associationHeading: { flexDirection: "row", alignItems: "center", gap: 11 }, addCircle: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#dff5f0", alignItems: "center", justifyContent: "center" }, addSymbol: { color: "#087f6a", fontSize: 25, lineHeight: 27, fontWeight: "500" }, associateButton: { minHeight: 47, borderRadius: 14, backgroundColor: "#087f6a", alignItems: "center", justifyContent: "center", marginTop: 13 },
+  associationDropdown: { backgroundColor: "#fff", borderRadius: 21, padding: 17, borderWidth: 1, borderColor: "#cfe4df", shadowColor: "#0a4c40", shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 3 }, associateButton: { minHeight: 47, borderRadius: 14, backgroundColor: "#087f6a", alignItems: "center", justifyContent: "center", marginTop: 13 },
+  addPatientButton: { minHeight: 52, borderRadius: 16, borderWidth: 1.5, borderColor: "#087f6a", backgroundColor: "#fff", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, marginTop: 3 }, addPatientButtonOpen: { backgroundColor: "#e2f5f1", borderColor: "#5bb8a8" }, addPatientPlus: { color: "#087f6a", fontSize: 27, lineHeight: 28, fontWeight: "500" }, addPatientPlusOpen: { fontSize: 25 }, addPatientText: { color: "#087f6a", fontSize: 14, fontWeight: "900" }, addPatientTextOpen: { color: "#356c62" },
   directoryHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 5 }, directoryTitle: { color: "#153d35", fontSize: 19, fontWeight: "900" }, countBadge: { minWidth: 25, height: 25, paddingHorizontal: 7, borderRadius: 13, backgroundColor: "#cceee7", alignItems: "center", justifyContent: "center" }, countText: { color: "#087f6a", fontSize: 11, fontWeight: "900" },
   emptyPatients: { minHeight: 210, borderRadius: 21, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", padding: 28 }, emptyIcon: { color: "#64b9aa", fontSize: 38, marginBottom: 8 }, emptyText: { color: "#78908a", fontSize: 12, textAlign: "center", lineHeight: 18, marginTop: 5 },
   patientCard: { minHeight: 84, borderRadius: 18, backgroundColor: "#fff", padding: 14, flexDirection: "row", alignItems: "center", gap: 12, borderWidth: 1, borderColor: "#e0ece9" }, patientCardPressed: { backgroundColor: "#edf8f5", borderColor: "#9cd8cc" }, patientAvatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#cceee7", alignItems: "center", justifyContent: "center" }, patientAvatarText: { color: "#087f6a", fontSize: 19, fontWeight: "900" }, patientCardName: { color: "#153d35", fontSize: 15, fontWeight: "900" }, patientEmail: { color: "#67817b", fontSize: 11, marginTop: 2 }, patientCardRight: { alignItems: "flex-end", gap: 8 }, onlineBadge: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: 10, backgroundColor: "#e4f7ee", paddingHorizontal: 7, paddingVertical: 4 }, onlineText: { color: "#087f6a", fontSize: 8, fontWeight: "900" }, chevron: { color: "#5e8f85", fontSize: 25, lineHeight: 25 }, backArrow: { color: "#087f6a", fontSize: 28, lineHeight: 30, marginRight: 8 },
