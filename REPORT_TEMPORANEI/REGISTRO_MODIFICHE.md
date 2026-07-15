@@ -327,3 +327,40 @@ Rendere comprensibile la configurazione posturale, permettere il ripristino dei 
 ### Attività aperta
 
 - Definire soglie clinicamente motivate mediante uno studio di calibrazione che metta in relazione l'orientamento IMU della t-shirt con misure posturali anatomiche validate.
+
+## 15 luglio 2026 — Avatar personali e semplificazione pannello soglie
+
+### Obiettivo
+
+Rendere gli avatar pertinenti agli utenti visualizzati, permettere la scelta di una foto profilo e rimuovere dal pannello Medico la spiegazione descrittiva delle soglie.
+
+### Modifiche
+
+- Rimossa dal pannello Medico la sezione `A cosa servono?`; i campi di configurazione e il ripristino dei valori predefiniti restano disponibili.
+- Sostituita la lettera fissa `S` nel riquadro della deviazione con l'avatar del paziente effettivamente monitorato.
+- Uniformati gli avatar nell'intestazione, nel profilo, nell'elenco pazienti e nel riquadro posturale.
+- Mostrata l'iniziale corretta dell'utente quando non è stata impostata una foto.
+- Aggiunto nella pagina delle informazioni personali il comando `Cambia foto`, con selezione dalla galleria e ritaglio quadrato.
+- Aggiunta la dipendenza ufficiale Expo `expo-image-picker` compatibile con SDK 54.
+- Aggiunto l'endpoint autenticato `PUT /api/v1/auth/avatar`.
+- Aggiunta in SQLite la colonna persistente `avatar_data`, resa disponibile anche al medico per i pazienti associati.
+- Limitate le foto ai formati JPEG/PNG e alla dimensione massima di 2 MB.
+- Aggiornata la sessione locale dopo il salvataggio, così la nuova foto appare immediatamente e resta visibile ai successivi accessi.
+
+### File interessati
+
+- `mobile/app/App.tsx`
+- `mobile/app/app.json`
+- `mobile/app/package.json`
+- `mobile/app/package-lock.json`
+- `backend/app/main.py`
+- `REPORT_TEMPORANEI/REGISTRO_MODIFICHE.md`
+
+### Verifiche
+
+- Controllo TypeScript completato senza errori.
+- Controllo della sintassi Python completato senza errori.
+- Bundle Android Expo generata correttamente.
+- Backend ricostruito e riavviato correttamente.
+- Migrazione SQLite verificata: la colonna `avatar_data` è presente e i 7 utenti esistenti sono rimasti invariati.
+- Tutti i container applicativi risultano attivi.

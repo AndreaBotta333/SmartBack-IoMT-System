@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import {
   ActivityIndicator,
   Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -14,13 +15,14 @@ import {
   View,
 } from "react-native";
 import * as SecureStore from "expo-secure-store";
+import * as ImagePicker from "expo-image-picker";
 import { StatusBar } from "expo-status-bar";
 import { LineChart } from "react-native-chart-kit";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { SmartBackLogo } from "./SmartBackLogo";
 
 type Role = "patient" | "doctor";
-type User = { id: string; name: string; first_name?: string; last_name?: string; email: string; role: Role; patient_code?: string | null; professional_verified?: boolean };
+type User = { id: string; name: string; first_name?: string; last_name?: string; email: string; role: Role; patient_code?: string | null; professional_verified?: boolean; avatar_data?: string | null };
 type Session = { access_token: string; user: User };
 type DoctorPatient = User & { associated_at?: string; has_live_data: boolean };
 type PostureStatus = "neutral" | "deviated" | "prolonged_deviation" | "marked_deviation";
@@ -123,7 +125,7 @@ function AppContent() {
 
   if (restoring) return <LoadingScreen />;
   if (!session) return <AuthScreen onAuthenticated={authenticated} />;
-  return <Dashboard session={session} onLogout={logout} />;
+  return <Dashboard session={session} onSessionUpdate={authenticated} onLogout={logout} />;
 }
 
 function LoadingScreen() {
@@ -264,7 +266,7 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (session: Session) =
   );
 }
 
-function Dashboard({ session, onLogout }: { session: Session; onLogout: () => void }) {
+function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; onSessionUpdate: (session: Session) => void; onLogout: () => void }) {
   const { dark } = useAppTheme();
   const { width } = useWindowDimensions();
   const [screen, setScreen] = useState<AppScreen>("dashboard");
@@ -284,6 +286,7 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
     : samples;
   const latest = visibleSamples[visibleSamples.length - 1];
   const posture = latest ? postureStyles[latest.posture_status] : null;
+  const monitoredUser = session.user.role === "doctor" ? selectedPatient : session.user;
 
   const refreshDevice = useCallback(async () => {
     try { setDevice(await api<DeviceStatus>("/api/v1/device/latest")); } catch { /* optional */ }
@@ -378,12 +381,12 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
       <View style={[styles.fixedHeader, dark && styles.headerDark]}>
         <Pressable onPress={() => setScreen("dashboard")}><Text style={styles.headerBrandSmart}>Smart<Text style={styles.headerBrandBack}>Back</Text></Text></Pressable>
         <View style={styles.headerRight}>
-          <Pressable accessibilityLabel="Apri il profilo" onPress={() => setScreen("profile")} style={[styles.avatar, screen === "profile" && styles.avatarSelected]}><Text style={styles.avatarText}>{session.user.name.charAt(0).toUpperCase()}</Text></Pressable>
+          <Pressable accessibilityLabel="Apri il profilo" onPress={() => setScreen("profile")} style={[styles.avatar, screen === "profile" && styles.avatarSelected]}><UserAvatar user={session.user} size={34} /></Pressable>
         </View>
       </View>
 
       {screen === "profile" ? (
-        <ProfileScreen session={session} onBack={() => setScreen("dashboard")} onPassword={() => setScreen("password")} onSettings={() => setScreen("settings")} onLogout={onLogout} />
+        <ProfileScreen session={session} onSessionUpdate={onSessionUpdate} onBack={() => setScreen("dashboard")} onPassword={() => setScreen("password")} onSettings={() => setScreen("settings")} onLogout={onLogout} />
       ) : screen === "password" ? (
         <ChangePasswordScreen token={session.access_token} onBack={() => setScreen("profile")} />
       ) : screen === "settings" ? (
@@ -419,7 +422,7 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
               <Pressable onPress={() => setSelectedPatient(null)} style={styles.patientStrip}><Text style={styles.backArrow}>‹</Text><View style={{ flex: 1 }}><Text style={styles.overline}>PAZIENTE SELEZIONATO</Text><Text style={styles.patientName}>{selectedPatient?.name}</Text></View><Text style={styles.patientCode}>{selectedPatient?.patient_code}</Text></Pressable>
             )}
             <View style={[styles.postureCard, { backgroundColor: posture.pale }]}>
-              <View style={styles.postureTop}><View style={[styles.statusMark, { backgroundColor: posture.color }]}><Text style={styles.statusMarkText}>S</Text></View><View style={{ flex: 1 }}><Text style={[styles.postureLabel, { color: posture.color }]}>{posture.label}</Text><Text style={styles.postureDetail}>{posture.detail}</Text></View></View>
+              <View style={styles.postureTop}><UserAvatar user={monitoredUser} size={43} accentColor={posture.color} /><View style={{ flex: 1 }}><Text style={[styles.postureLabel, { color: posture.color }]}>{posture.label}</Text><Text style={styles.postureDetail}>{posture.detail}</Text></View></View>
               <View style={styles.deviationRow}><Text style={styles.deviationCaption}>DEVIAZIONE DAL RIFERIMENTO</Text><Text style={[styles.deviationValue, { color: posture.color }]}>{formatSigned(latest.deviation_deg)}</Text></View>
             </View>
             <View style={styles.metricsRow}>
@@ -592,10 +595,6 @@ function HistoricalInsights({ session, patient }: { session: Session; patient: D
         <View style={[styles.configCard, dark && styles.surfaceDark]}>
           <Text style={[styles.sectionTitle, dark && styles.textDark]}>Parametri di monitoraggio</Text>
           <Text style={[styles.mutedSmall, dark && styles.mutedDark]}>Configurazione specifica per {patient?.first_name || patient?.name}</Text>
-          <View style={[styles.thresholdExplanation, dark && styles.surfaceDarkAlt]}>
-            <Text style={[styles.thresholdExplanationTitle, dark && styles.textDark]}>A cosa servono?</Text>
-            <Text style={[styles.thresholdExplanationText, dark && styles.mutedDark]}>La soglia moderata identifica l'inizio di una deviazione. La soglia marcata distingue uno scostamento più ampio. La persistenza indica per quanti secondi la deviazione deve continuare prima di generare un avviso prolungato.</Text>
-          </View>
           <View style={styles.configGrid}>
             <View style={styles.configField}><Field label="SOGLIA MODERATA (°)" value={moderate} onChangeText={setModerate} keyboardType="decimal-pad" placeholder="10" /></View>
             <View style={styles.configField}><Field label="SOGLIA MARCATA (°)" value={marked} onChangeText={setMarked} keyboardType="decimal-pad" placeholder="20" /></View>
@@ -618,14 +617,42 @@ function Statistic({ label, value, color }: { label: string; value: string; colo
 }
 
 function ProfileScreen({
-  session, onBack, onPassword, onSettings, onLogout,
+  session, onSessionUpdate, onBack, onPassword, onSettings, onLogout,
 }: {
-  session: Session; onBack: () => void; onPassword: () => void; onSettings: () => void; onLogout: () => void;
+  session: Session; onSessionUpdate: (session: Session) => void; onBack: () => void; onPassword: () => void; onSettings: () => void; onLogout: () => void;
 }) {
   const { dark } = useAppTheme();
   const user = session.user;
   const firstName = user.first_name || user.name.split(" ")[0] || "—";
   const lastName = user.last_name || user.name.split(" ").slice(1).join(" ") || "—";
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  async function chooseAvatar() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert("Accesso alle foto necessario", "Autorizza SmartBack ad accedere alla galleria per scegliere la foto profilo.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"], allowsEditing: true, aspect: [1, 1], quality: 0.35, base64: true,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    if (!asset?.base64) {
+      Alert.alert("Foto non disponibile", "Non è stato possibile leggere l'immagine selezionata.");
+      return;
+    }
+    setUploadingAvatar(true);
+    try {
+      const avatarData = `data:image/jpeg;base64,${asset.base64}`;
+      const updatedUser = await api<User>("/api/v1/auth/avatar", { method: "PUT", body: JSON.stringify({ avatar_data: avatarData }) }, session.access_token);
+      await onSessionUpdate({ ...session, user: updatedUser });
+    } catch (caught) {
+      Alert.alert("Foto non aggiornata", caught instanceof Error ? caught.message : "Riprova più tardi.");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }
 
   function confirmLogout() {
     Alert.alert("Disconnetti account", "Vuoi davvero uscire da SmartBack?", [
@@ -638,7 +665,10 @@ function ProfileScreen({
     <ScrollView style={dark && styles.screenDark} contentContainerStyle={styles.pageContent}>
       <PageHeading title="Informazioni personali" subtitle="Il tuo profilo SmartBack" onBack={onBack} />
       <View style={[styles.profileHero, dark && styles.surfaceDarkAlt]}>
-        <View style={styles.profileAvatar}><Text style={styles.profileAvatarText}>{firstName.charAt(0).toUpperCase()}</Text></View>
+        <UserAvatar user={user} size={72} />
+        <Pressable disabled={uploadingAvatar} onPress={chooseAvatar} style={({ pressed }) => [styles.changePhotoButton, pressed && styles.pressed]}>
+          {uploadingAvatar ? <ActivityIndicator color="#087f6a" size="small" /> : <Text style={styles.changePhotoText}>Cambia foto</Text>}
+        </Pressable>
         <Text style={[styles.profileName, dark && styles.textDark]}>{firstName} {lastName}</Text>
         <Text style={styles.profileRole}>{user.role === "doctor" ? "Medico" : "Paziente"}</Text>
       </View>
@@ -763,7 +793,7 @@ function DoctorPatientDirectory({
         <View style={[styles.emptyPatients, dark && styles.surfaceDark]}><Text style={styles.emptyIcon}>◎</Text><Text style={[styles.waitingTitle, dark && styles.textDark]}>Nessun paziente associato</Text><Text style={[styles.emptyText, dark && styles.mutedDark]}>Premi il pulsante + per associare il tuo primo paziente tramite codice fiscale.</Text></View>
       ) : patients.map((patient) => (
         <Pressable key={patient.id} onPress={() => onSelect(patient)} style={({ pressed }) => [styles.patientCard, dark && styles.surfaceDark, pressed && styles.patientCardPressed]}>
-          <View style={styles.patientAvatar}><Text style={styles.patientAvatarText}>{patient.name.charAt(0).toUpperCase()}</Text></View>
+          <UserAvatar user={patient} size={48} />
           <View style={{ flex: 1 }}><Text style={[styles.patientCardName, dark && styles.textDark]}>{patient.name}</Text><Text style={[styles.patientEmail, dark && styles.mutedDark]}>{patient.email}</Text><Text style={styles.patientCode}>{patient.patient_code}</Text></View>
           <View style={styles.patientCardRight}>{patient.has_live_data && <View style={styles.onlineBadge}><View style={styles.miniDot} /><Text style={styles.onlineText}>Live</Text></View>}<Text style={styles.chevron}>›</Text></View>
         </Pressable>
@@ -790,6 +820,16 @@ function DoctorPatientDirectory({
 
 function Logo({ large = false }: { large?: boolean }) {
   return <SmartBackLogo large={large} />;
+}
+
+function UserAvatar({ user, size, accentColor = "#087f6a" }: { user: User | null; size: number; accentColor?: string }) {
+  const initial = user?.first_name?.charAt(0) || user?.name?.charAt(0) || "?";
+  const avatarStyle = { width: size, height: size, borderRadius: size / 2, backgroundColor: user?.avatar_data ? "#dceae6" : accentColor };
+  return (
+    <View style={[styles.userAvatar, avatarStyle]}>
+      {user?.avatar_data ? <Image source={{ uri: user.avatar_data }} style={avatarStyle} resizeMode="cover" /> : <Text style={[styles.userAvatarText, { fontSize: Math.max(14, size * 0.4) }]}>{initial.toUpperCase()}</Text>}
+    </View>
+  );
 }
 
 function Field(props: React.ComponentProps<typeof TextInput> & { label: string }) {
@@ -860,7 +900,7 @@ const styles = StyleSheet.create({
   avatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#c8eee6", alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "transparent" }, avatarSelected: { borderColor: "#087f6a", backgroundColor: "#e3f7f2" }, avatarText: { color: "#087f6a", fontWeight: "900" }, dashboardContent: { padding: 18, paddingBottom: 38, gap: 14 },
   welcome: { color: "#153d35", fontSize: 24, fontWeight: "900", letterSpacing: -0.5 }, roleCaption: { color: "#6b817c", marginTop: 3, fontSize: 12 }, waitingCard: { minHeight: 260, borderRadius: 24, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", gap: 10, padding: 24 }, waitingTitle: { color: "#153d35", fontSize: 18, fontWeight: "800" }, muted: { color: "#6b817c", fontSize: 12 },
   patientStrip: { backgroundColor: "#dff4ef", borderRadius: 16, padding: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, overline: { color: "#438579", fontSize: 8, fontWeight: "900", letterSpacing: 1 }, patientName: { color: "#153d35", fontWeight: "800", marginTop: 3 }, patientCode: { color: "#5f817a", fontSize: 9 },
-  postureCard: { padding: 18, borderRadius: 22, gap: 20 }, postureTop: { flexDirection: "row", gap: 13, alignItems: "flex-start" }, statusMark: { width: 43, height: 43, borderRadius: 22, alignItems: "center", justifyContent: "center" }, statusMarkText: { color: "#fff", fontWeight: "900", fontSize: 18 }, postureLabel: { fontSize: 19, fontWeight: "900" }, postureDetail: { color: "#526d67", fontSize: 12, lineHeight: 18, marginTop: 3 },
+  postureCard: { padding: 18, borderRadius: 22, gap: 20 }, postureTop: { flexDirection: "row", gap: 13, alignItems: "flex-start" }, postureLabel: { fontSize: 19, fontWeight: "900" }, postureDetail: { color: "#526d67", fontSize: 12, lineHeight: 18, marginTop: 3 },
   deviationRow: { borderTopWidth: 1, borderTopColor: "rgba(30,70,60,.12)", paddingTop: 14, flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" }, deviationCaption: { color: "#66817b", fontSize: 8, fontWeight: "900", letterSpacing: 0.7, flex: 1 }, deviationValue: { fontSize: 33, lineHeight: 37, fontWeight: "900", letterSpacing: -1 },
   metricsRow: { flexDirection: "row", gap: 9 }, metricCard: { flex: 1, backgroundColor: "#fff", padding: 13, borderRadius: 15 }, metricLabel: { color: "#78908a", fontSize: 10, fontWeight: "700" }, metricValue: { color: "#153d35", fontSize: 18, fontWeight: "900", marginTop: 4 },
   whiteCard: { backgroundColor: "#fff", borderRadius: 21, paddingTop: 17, overflow: "hidden" }, sectionHeading: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", paddingHorizontal: 17 }, sectionTitle: { color: "#153d35", fontSize: 16, fontWeight: "900" }, mutedSmall: { color: "#78908a", fontSize: 10, marginTop: 3 }, legendDot: { flexDirection: "row", alignItems: "center", gap: 5 }, miniDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#087f6a" }, legendText: { color: "#78908a", fontSize: 9 }, chart: { marginLeft: -13, marginTop: 8 },
@@ -870,14 +910,14 @@ const styles = StyleSheet.create({
   addPatientButton: { minHeight: 52, borderRadius: 16, borderWidth: 1.5, borderColor: "#087f6a", backgroundColor: "#fff", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, marginTop: 3 }, addPatientButtonOpen: { backgroundColor: "#e2f5f1", borderColor: "#5bb8a8" }, addPatientPlus: { color: "#087f6a", fontSize: 27, lineHeight: 28, fontWeight: "500" }, addPatientPlusOpen: { fontSize: 25 }, addPatientText: { color: "#087f6a", fontSize: 14, fontWeight: "900" }, addPatientTextOpen: { color: "#356c62" },
   directoryHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 5 }, directoryTitle: { color: "#153d35", fontSize: 19, fontWeight: "900" }, countBadge: { minWidth: 25, height: 25, paddingHorizontal: 7, borderRadius: 13, backgroundColor: "#cceee7", alignItems: "center", justifyContent: "center" }, countText: { color: "#087f6a", fontSize: 11, fontWeight: "900" },
   emptyPatients: { minHeight: 210, borderRadius: 21, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", padding: 28 }, emptyIcon: { color: "#64b9aa", fontSize: 38, marginBottom: 8 }, emptyText: { color: "#78908a", fontSize: 12, textAlign: "center", lineHeight: 18, marginTop: 5 },
-  patientCard: { minHeight: 84, borderRadius: 18, backgroundColor: "#fff", padding: 14, flexDirection: "row", alignItems: "center", gap: 12, borderWidth: 1, borderColor: "#e0ece9" }, patientCardPressed: { backgroundColor: "#edf8f5", borderColor: "#9cd8cc" }, patientAvatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#cceee7", alignItems: "center", justifyContent: "center" }, patientAvatarText: { color: "#087f6a", fontSize: 19, fontWeight: "900" }, patientCardName: { color: "#153d35", fontSize: 15, fontWeight: "900" }, patientEmail: { color: "#67817b", fontSize: 11, marginTop: 2 }, patientCardRight: { alignItems: "flex-end", gap: 8 }, onlineBadge: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: 10, backgroundColor: "#e4f7ee", paddingHorizontal: 7, paddingVertical: 4 }, onlineText: { color: "#087f6a", fontSize: 8, fontWeight: "900" }, chevron: { color: "#5e8f85", fontSize: 25, lineHeight: 25 }, backArrow: { color: "#087f6a", fontSize: 28, lineHeight: 30, marginRight: 8 },
+  patientCard: { minHeight: 84, borderRadius: 18, backgroundColor: "#fff", padding: 14, flexDirection: "row", alignItems: "center", gap: 12, borderWidth: 1, borderColor: "#e0ece9" }, patientCardPressed: { backgroundColor: "#edf8f5", borderColor: "#9cd8cc" }, patientCardName: { color: "#153d35", fontSize: 15, fontWeight: "900" }, patientEmail: { color: "#67817b", fontSize: 11, marginTop: 2 }, patientCardRight: { alignItems: "flex-end", gap: 8 }, onlineBadge: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: 10, backgroundColor: "#e4f7ee", paddingHorizontal: 7, paddingVertical: 4 }, onlineText: { color: "#087f6a", fontSize: 8, fontWeight: "900" }, chevron: { color: "#5e8f85", fontSize: 25, lineHeight: 25 }, backArrow: { color: "#087f6a", fontSize: 28, lineHeight: 30, marginRight: 8 },
   pageContent: { flexGrow: 1, padding: 18, paddingBottom: 42, gap: 16 }, pageHeading: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 2 }, backButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: "#fff", borderWidth: 1, borderColor: "#dceae6", alignItems: "center", justifyContent: "center" }, backButtonText: { color: "#087f6a", fontSize: 30, lineHeight: 31, marginTop: -2 }, pageHeadingCopy: { flex: 1 }, pageTitle: { color: "#153d35", fontSize: 23, fontWeight: "900", letterSpacing: -0.5 }, pageSubtitle: { color: "#6b817c", fontSize: 12, marginTop: 2 },
-  profileHero: { alignItems: "center", backgroundColor: "#dff4ef", borderRadius: 24, paddingVertical: 24, paddingHorizontal: 18 }, profileAvatar: { width: 72, height: 72, borderRadius: 36, backgroundColor: "#087f6a", alignItems: "center", justifyContent: "center", shadowColor: "#064b3f", shadowOpacity: 0.16, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 4 }, profileAvatarText: { color: "#fff", fontSize: 29, fontWeight: "900" }, profileName: { color: "#153d35", fontSize: 21, fontWeight: "900", marginTop: 12 }, profileRole: { color: "#087f6a", fontSize: 11, fontWeight: "800", marginTop: 4, textTransform: "uppercase", letterSpacing: 0.8 },
+  profileHero: { alignItems: "center", backgroundColor: "#dff4ef", borderRadius: 24, paddingVertical: 24, paddingHorizontal: 18 }, userAvatar: { alignItems: "center", justifyContent: "center", overflow: "hidden" }, userAvatarText: { color: "#fff", fontWeight: "900" }, changePhotoButton: { minHeight: 34, minWidth: 116, borderRadius: 17, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", paddingHorizontal: 14, marginTop: 10, borderWidth: 1, borderColor: "#a8d9cf" }, changePhotoText: { color: "#087f6a", fontSize: 11, fontWeight: "900" }, profileName: { color: "#153d35", fontSize: 21, fontWeight: "900", marginTop: 12 }, profileRole: { color: "#087f6a", fontSize: 11, fontWeight: "800", marginTop: 4, textTransform: "uppercase", letterSpacing: 0.8 },
   profileCard: { backgroundColor: "#fff", borderRadius: 21, paddingHorizontal: 17 }, profileInfo: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#e6efed" }, profileInfoLast: { borderBottomWidth: 0 }, profileInfoLabel: { color: "#78908a", fontSize: 9, fontWeight: "900", letterSpacing: 0.8 }, profileInfoValue: { color: "#153d35", fontSize: 15, fontWeight: "700", marginTop: 4 },
   profileMenu: { backgroundColor: "#fff", borderRadius: 21, paddingHorizontal: 15 }, menuButton: { minHeight: 72, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: 1, borderBottomColor: "#e6efed" }, menuButtonLast: { borderBottomWidth: 0 }, menuButtonPressed: { opacity: 0.65 }, menuIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#dff5f0", alignItems: "center", justifyContent: "center" }, menuIconDanger: { backgroundColor: "#fee9e7" }, menuIconText: { color: "#087f6a", fontSize: 17, fontWeight: "900" }, menuDangerText: { color: "#b42318" }, menuCopy: { flex: 1 }, menuTitle: { color: "#153d35", fontSize: 14, fontWeight: "900" }, menuSubtitle: { color: "#78908a", fontSize: 10, marginTop: 3 }, menuChevron: { color: "#6f9189", fontSize: 26 },
   formCard: { backgroundColor: "#fff", borderRadius: 23, padding: 19 }, passwordHint: { color: "#78908a", fontSize: 10, lineHeight: 15, marginTop: 11 }, settingsCard: { backgroundColor: "#fff", borderRadius: 21, padding: 17, flexDirection: "row", alignItems: "center", gap: 12 }, settingIcon: { width: 45, height: 45, borderRadius: 23, backgroundColor: "#dff5f0", alignItems: "center", justifyContent: "center" }, settingIconText: { color: "#087f6a", fontSize: 22 }, settingCopy: { flex: 1 }, settingTitle: { color: "#153d35", fontSize: 15, fontWeight: "900" }, settingText: { color: "#78908a", fontSize: 10, lineHeight: 15, marginTop: 3 }, soonBadge: { backgroundColor: "#edf4f2", borderRadius: 10, paddingHorizontal: 7, paddingVertical: 5 }, soonText: { color: "#608078", fontSize: 7, fontWeight: "900", letterSpacing: 0.4 }, settingsNote: { color: "#78908a", fontSize: 11, lineHeight: 17, textAlign: "center", paddingHorizontal: 18 },
   historyCard: { backgroundColor: "#fff", borderRadius: 21, paddingTop: 17, overflow: "hidden" }, historyHeading: { minHeight: 38, paddingHorizontal: 17, flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }, periodRow: { flexDirection: "row", gap: 6, paddingHorizontal: 14, marginTop: 14 }, periodButton: { flex: 1, minHeight: 34, borderRadius: 11, borderWidth: 1, borderColor: "#d6e5e1", alignItems: "center", justifyContent: "center", backgroundColor: "#fbfefd" }, periodButtonSelected: { backgroundColor: "#087f6a", borderColor: "#087f6a" }, periodText: { color: "#5d7771", fontSize: 9, fontWeight: "800" }, periodTextSelected: { color: "#fff" }, historyLegend: { flexDirection: "row", justifyContent: "flex-end", gap: 13, paddingHorizontal: 17, marginTop: 12 }, legendItem: { flexDirection: "row", alignItems: "center", gap: 5 }, historyLegendDot: { width: 8, height: 8, borderRadius: 4 }, correctDot: { backgroundColor: "#25a995" }, incorrectDot: { backgroundColor: "#d92d20" }, historyChart: { marginLeft: -13, marginTop: 2 }, noHistoryText: { color: "#78908a", fontSize: 10, textAlign: "center", paddingHorizontal: 16, paddingBottom: 15, marginTop: -7 },
   statisticsCard: { backgroundColor: "#fff", borderRadius: 21, padding: 17 }, statisticsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 9, marginTop: 14 }, statisticBox: { width: "48%", flexGrow: 1, minHeight: 82, borderRadius: 15, backgroundColor: "#f3f8f7", padding: 13, justifyContent: "center" }, statisticValue: { fontSize: 22, fontWeight: "900" }, statisticLabel: { color: "#6b817c", fontSize: 10, fontWeight: "700", marginTop: 4 },
-  configCard: { backgroundColor: "#fff", borderRadius: 21, padding: 17 }, thresholdExplanation: { backgroundColor: "#eef8f5", borderRadius: 13, padding: 12, marginTop: 13 }, thresholdExplanationTitle: { color: "#153d35", fontSize: 11, fontWeight: "900" }, thresholdExplanationText: { color: "#5c7770", fontSize: 9, lineHeight: 15, marginTop: 4 }, configGrid: { flexDirection: "row", gap: 9 }, configField: { flex: 1 }, configWarning: { color: "#9a6500", backgroundColor: "#fff7e6", borderRadius: 11, padding: 10, fontSize: 9, lineHeight: 14, marginTop: 13 }, configActions: { flexDirection: "row", gap: 8, marginTop: 13 }, configResetButton: { flex: 1, minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: "#d0a044", alignItems: "center", justifyContent: "center", paddingHorizontal: 8 }, configResetText: { color: "#9a6500", fontSize: 11, fontWeight: "900", textAlign: "center" }, configSaveButton: { flex: 1, minHeight: 48, borderRadius: 14, backgroundColor: "#087f6a", alignItems: "center", justifyContent: "center", paddingHorizontal: 8 },
+  configCard: { backgroundColor: "#fff", borderRadius: 21, padding: 17 }, configGrid: { flexDirection: "row", gap: 9 }, configField: { flex: 1 }, configWarning: { color: "#9a6500", backgroundColor: "#fff7e6", borderRadius: 11, padding: 10, fontSize: 9, lineHeight: 14, marginTop: 13 }, configActions: { flexDirection: "row", gap: 8, marginTop: 13 }, configResetButton: { flex: 1, minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: "#d0a044", alignItems: "center", justifyContent: "center", paddingHorizontal: 8 }, configResetText: { color: "#9a6500", fontSize: 11, fontWeight: "900", textAlign: "center" }, configSaveButton: { flex: 1, minHeight: 48, borderRadius: 14, backgroundColor: "#087f6a", alignItems: "center", justifyContent: "center", paddingHorizontal: 8 },
   screenDark: { backgroundColor: "#0d1714" }, headerDark: { backgroundColor: "#13211d", borderBottomColor: "#29433d" }, surfaceDark: { backgroundColor: "#162521", borderColor: "#29433d" }, surfaceDarkAlt: { backgroundColor: "#20332e", borderColor: "#355149" }, textDark: { color: "#e7f4f0" }, mutedDark: { color: "#9eb9b1" }, borderDark: { borderBottomColor: "#29433d" }, inputDark: { backgroundColor: "#20332e", borderColor: "#355149", color: "#e7f4f0" },
 });

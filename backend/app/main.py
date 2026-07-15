@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -126,6 +128,25 @@ class ChangePasswordRequest(BaseModel):
         return self
 
 
+class AvatarRequest(BaseModel):
+    avatar_data: str = Field(min_length=32, max_length=3_000_000)
+
+    @field_validator("avatar_data")
+    @classmethod
+    def validate_avatar(cls, value: str) -> str:
+        prefixes = ("data:image/jpeg;base64,", "data:image/png;base64,")
+        prefix = next((candidate for candidate in prefixes if value.startswith(candidate)), None)
+        if prefix is None:
+            raise ValueError("La foto deve essere in formato JPEG o PNG")
+        try:
+            decoded = base64.b64decode(value[len(prefix):], validate=True)
+        except (binascii.Error, ValueError):
+            raise ValueError("La foto selezionata non è valida") from None
+        if len(decoded) > 2_000_000:
+            raise ValueError("La foto è troppo grande; scegli un'immagine inferiore a 2 MB")
+        return value
+
+
 class AssociatePatientRequest(BaseModel):
     fiscal_code: str = Field(min_length=16, max_length=16)
 
@@ -207,6 +228,7 @@ def init_auth_db() -> sqlite3.Connection:
     for column, definition in (
         ("first_name", "TEXT"), ("last_name", "TEXT"),
         ("fiscal_code", "TEXT"), ("professional_verified", "INTEGER NOT NULL DEFAULT 0"),
+        ("avatar_data", "TEXT"),
     ):
         if column not in columns:
             connection.execute(f"ALTER TABLE users ADD COLUMN {column} {definition}")
@@ -244,6 +266,7 @@ def public_user(row: sqlite3.Row) -> dict[str, str | None]:
         "first_name": row["first_name"], "last_name": row["last_name"],
         "role": row["role"], "patient_code": row["patient_code"],
         "professional_verified": bool(row["professional_verified"]),
+        "avatar_data": row["avatar_data"],
     }
 
 
@@ -520,6 +543,14 @@ def change_password(body: ChangePasswordRequest, user: sqlite3.Row = Depends(cur
         (new_digest, new_salt, user["id"]),
     )
     auth_db.commit()
+
+
+@app.put("/api/v1/auth/avatar")
+def change_avatar(body: AvatarRequest, user: sqlite3.Row = Depends(current_user)):
+    auth_db.execute("UPDATE users SET avatar_data=? WHERE id=?", (body.avatar_data, user["id"]))
+    auth_db.commit()
+    updated_user = auth_db.execute("SELECT * FROM users WHERE id=?", (user["id"],)).fetchone()
+    return public_user(updated_user)
 
 
 @app.get("/api/v1/doctor/patients")
