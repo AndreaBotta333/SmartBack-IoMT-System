@@ -165,4 +165,6 @@ Rendere il progetto disponibile ai collaboratori tramite una repository GitHub c
 
 - Repository locale collegata al remoto.
 - Staging del primo commit applicativo preparato e controllato.
-- Creazione del commit e primo push ancora in attesa di conferma.
+- Primo commit applicativo creato: `fa6a22a` (`feat: pubblica la struttura iniziale di SmartBack`).
+- Push completato sul ramo remoto `origin/main`.
+- Repository locale e repository GitHub sincronizzate.
