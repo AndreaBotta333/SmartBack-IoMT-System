@@ -698,6 +698,16 @@ def update_monitoring_config(
     return monitoring_config_for_patient(patient)
 
 
+@app.delete("/api/v1/doctor/patients/{patient_id}/monitoring-config")
+def reset_monitoring_config(patient_id: str, user: sqlite3.Row = Depends(current_user)):
+    if user["role"] != "doctor":
+        raise HTTPException(status_code=403, detail="Accesso riservato al medico")
+    patient = accessible_patient(user, patient_id)
+    auth_db.execute("DELETE FROM monitoring_configs WHERE patient_id=?", (patient["id"],))
+    auth_db.commit()
+    return monitoring_config_for_patient(patient)
+
+
 @app.websocket("/ws/wearable")
 async def wearable_stream(websocket: WebSocket):
     await websocket.accept()

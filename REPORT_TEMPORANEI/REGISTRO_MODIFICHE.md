@@ -283,3 +283,47 @@ Integrare una vista storica per paziente, statistiche personali e parametri di m
 - Le statistiche sono calcolate sui campioni aggregati del periodo selezionato.
 - Le soglie iniziali restano dimostrative e non validate per uso clinico.
 - I valori dovranno essere giustificati tramite fonti mediche e formalizzati nella futura documentazione tecnica.
+
+## 15 luglio 2026 — Spiegazione e reset soglie, tema scuro
+
+### Obiettivo
+
+Rendere comprensibile la configurazione posturale, permettere il ripristino dei valori iniziali e aggiungere il tema scuro.
+
+### Analisi delle fonti mediche
+
+- Le fonti analizzate confermano che l'aumento della flessione cervicale incrementa progressivamente il carico sul collo.
+- La revisione sul Text Neck riporta esempi biomeccanici a 15°, 30°, 45° e 60° di flessione.
+- La revisione sugli esercizi correttivi riporta criteri angolari utilizzati in specifici protocolli, tra cui angolo della testa in avanti superiore a 46°.
+- Lo studio sulla durata d'uso dello smartphone rileva differenze tra esposizioni di 10, 20 e 30 minuti.
+- Queste misure non coincidono direttamente con la deviazione relativa dell'IMU rispetto alla postura calibrata.
+- Le fonti non giustificano direttamente la persistenza di 5 secondi.
+- Per questo motivo `10° / 20° / 5 s` restano definiti valori predefiniti di progetto e non cut-off diagnostici o clinicamente validati.
+
+### Modifiche
+
+- Aggiunta nel pannello Medico una spiegazione della soglia moderata, della soglia marcata e della persistenza.
+- Aggiunto il pulsante `Ripristina predefiniti` con conferma preventiva.
+- Implementato l'endpoint backend `DELETE` che elimina la configurazione personalizzata del paziente e ripristina `10° / 20° / 5 s`.
+- Implementato il toggle Tema scuro nella pagina Impostazioni.
+- Salvata la preferenza del tema tramite Expo SecureStore, mantenendola dopo la chiusura dell'app.
+- Applicato il tema scuro a schermate di accesso, dashboard, profilo, impostazioni, moduli, liste, statistiche e grafici.
+
+### File interessati
+
+- `mobile/app/App.tsx`
+- `backend/app/main.py`
+- `REPORT_TEMPORANEI/REGISTRO_MODIFICHE.md`
+
+### Verifiche
+
+- Controllo TypeScript completato senza errori.
+- Controllo della sintassi Python completato senza errori.
+- Bundle Android Expo generata correttamente.
+- Backend ricostruito e riavviato.
+- Endpoint di reset testato: restituiti correttamente `10.0 / 20.0 / 5.0`.
+- Sessione temporanea di test eliminata.
+
+### Attività aperta
+
+- Definire soglie clinicamente motivate mediante uno studio di calibrazione che metta in relazione l'orientamento IMU della t-shirt con misure posturali anatomiche validate.
