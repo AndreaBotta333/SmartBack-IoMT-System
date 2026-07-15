@@ -5,7 +5,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,6 +15,7 @@ import {
 import * as SecureStore from "expo-secure-store";
 import { StatusBar } from "expo-status-bar";
 import { LineChart } from "react-native-chart-kit";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { SmartBackLogo } from "./SmartBackLogo";
 
 type Role = "patient" | "doctor";
@@ -31,6 +31,7 @@ type PostureSample = {
 };
 type DeviceStatus = { device_id: string; state_of_charge?: number; charging?: boolean };
 type ConnectionState = "connecting" | "connected" | "disconnected";
+type AppScreen = "dashboard" | "profile" | "password" | "settings";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
 const WS_URL = process.env.EXPO_PUBLIC_WS_URL ?? "ws://localhost:8000/ws/wearable";
@@ -72,6 +73,10 @@ async function api<T>(path: string, init: RequestInit = {}, token?: string): Pro
 }
 
 export default function App() {
+  return <SafeAreaProvider><AppContent /></SafeAreaProvider>;
+}
+
+function AppContent() {
   const [session, setSession] = useState<Session | null>(null);
   const [restoring, setRestoring] = useState(true);
 
@@ -236,6 +241,7 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (session: Session) =
 
 function Dashboard({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const { width } = useWindowDimensions();
+  const [screen, setScreen] = useState<AppScreen>("dashboard");
   const [samples, setSamples] = useState<PostureSample[]>([]);
   const [device, setDevice] = useState<DeviceStatus | null>(null);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
@@ -343,16 +349,23 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
   const roleLabel = session.user.role === "doctor" ? "Medico" : "Paziente";
 
   return (
-    <SafeAreaView style={styles.dashboardSafe}>
+    <SafeAreaView edges={["top", "left", "right"]} style={styles.dashboardSafe}>
       <StatusBar style="dark" />
       <View style={styles.fixedHeader}>
-        <Logo />
+        <Pressable onPress={() => setScreen("dashboard")}><Text style={styles.headerBrand}>SmartBack</Text></Pressable>
         <View style={styles.headerRight}>
           <View style={styles.liveBadge}><View style={[styles.liveDot, connection !== "connected" && styles.liveDotOffline]} /><Text style={styles.liveText}>{connectionLabel}</Text></View>
-          <Pressable onPress={onLogout} style={styles.avatar}><Text style={styles.avatarText}>{session.user.name.charAt(0).toUpperCase()}</Text></Pressable>
+          <Pressable accessibilityLabel="Apri il profilo" onPress={() => setScreen("profile")} style={[styles.avatar, screen === "profile" && styles.avatarSelected]}><Text style={styles.avatarText}>{session.user.name.charAt(0).toUpperCase()}</Text></Pressable>
         </View>
       </View>
 
+      {screen === "profile" ? (
+        <ProfileScreen session={session} onBack={() => setScreen("dashboard")} onPassword={() => setScreen("password")} onSettings={() => setScreen("settings")} onLogout={onLogout} />
+      ) : screen === "password" ? (
+        <ChangePasswordScreen token={session.access_token} onBack={() => setScreen("profile")} />
+      ) : screen === "settings" ? (
+        <SettingsScreen onBack={() => setScreen("profile")} />
+      ) : (
       <ScrollView contentContainerStyle={styles.dashboardContent}>
         <View>
           <Text style={styles.welcome}>Ciao, {session.user.name.split(" ")[0]}</Text>
@@ -404,8 +417,129 @@ function Dashboard({ session, onLogout }: { session: Session; onLogout: () => vo
         {message ? <Text style={styles.message}>{message}</Text> : null}
         <Text style={styles.disclaimer}>Soglie dimostrative, non validate per uso clinico.</Text>
       </ScrollView>
+      )}
     </SafeAreaView>
   );
+}
+
+function ProfileScreen({
+  session, onBack, onPassword, onSettings, onLogout,
+}: {
+  session: Session; onBack: () => void; onPassword: () => void; onSettings: () => void; onLogout: () => void;
+}) {
+  const user = session.user;
+  const firstName = user.first_name || user.name.split(" ")[0] || "—";
+  const lastName = user.last_name || user.name.split(" ").slice(1).join(" ") || "—";
+
+  function confirmLogout() {
+    Alert.alert("Disconnetti account", "Vuoi davvero uscire da SmartBack?", [
+      { text: "Annulla", style: "cancel" },
+      { text: "Esci", style: "destructive", onPress: onLogout },
+    ]);
+  }
+
+  return (
+    <ScrollView contentContainerStyle={styles.pageContent}>
+      <PageHeading title="Informazioni personali" subtitle="Il tuo profilo SmartBack" onBack={onBack} />
+      <View style={styles.profileHero}>
+        <View style={styles.profileAvatar}><Text style={styles.profileAvatarText}>{firstName.charAt(0).toUpperCase()}</Text></View>
+        <Text style={styles.profileName}>{firstName} {lastName}</Text>
+        <Text style={styles.profileRole}>{user.role === "doctor" ? "Medico" : "Paziente"}</Text>
+      </View>
+      <View style={styles.profileCard}>
+        <ProfileInfo label="NOME" value={firstName} />
+        <ProfileInfo label="COGNOME" value={lastName} />
+        <ProfileInfo label="EMAIL" value={user.email} last />
+      </View>
+      <View style={styles.profileMenu}>
+        <MenuButton icon="✦" title="Cambia password" subtitle="Aggiorna la password di accesso" onPress={onPassword} />
+        <MenuButton icon="⚙" title="Impostazioni" subtitle="Preferenze dell'applicazione" onPress={onSettings} />
+        <MenuButton icon="↪" title="Esci dall'account" subtitle="Torna alla schermata di accesso" onPress={confirmLogout} danger last />
+      </View>
+    </ScrollView>
+  );
+}
+
+function ChangePasswordScreen({ token, onBack }: { token: string; onBack: () => void }) {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    setError("");
+    if (!currentPassword || !newPassword || !confirmation) {
+      setError("Compila tutti i campi.");
+      return;
+    }
+    if (newPassword.length < 8 || !PASSWORD_NUMBER_PATTERN.test(newPassword) || !PASSWORD_SYMBOL_PATTERN.test(newPassword)) {
+      setError("La nuova password deve avere almeno 8 caratteri, un numero e un simbolo speciale.");
+      return;
+    }
+    if (newPassword !== confirmation) {
+      setError("Le nuove password non coincidono.");
+      return;
+    }
+    if (newPassword === currentPassword) {
+      setError("La nuova password deve essere diversa da quella attuale.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await api("/api/v1/auth/password", { method: "PUT", body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }) }, token);
+      setCurrentPassword(""); setNewPassword(""); setConfirmation("");
+      Alert.alert("Password aggiornata", "La password è stata modificata correttamente.", [{ text: "OK", onPress: onBack }]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Impossibile aggiornare la password.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <KeyboardAvoidingView style={styles.flexOne} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.pageContent}>
+        <PageHeading title="Cambia password" subtitle="Proteggi il tuo account" onBack={onBack} />
+        <View style={styles.formCard}>
+          <Field label="PASSWORD ATTUALE" value={currentPassword} onChangeText={setCurrentPassword} secureTextEntry autoCapitalize="none" placeholder="Inserisci la password attuale" />
+          <Field label="NUOVA PASSWORD" value={newPassword} onChangeText={setNewPassword} secureTextEntry autoCapitalize="none" placeholder="Almeno 8 caratteri" />
+          <Field label="CONFERMA NUOVA PASSWORD" value={confirmation} onChangeText={setConfirmation} secureTextEntry autoCapitalize="none" placeholder="Ripeti la nuova password" />
+          <Text style={styles.passwordHint}>Deve contenere almeno un numero e un simbolo speciale.</Text>
+          {error ? <Text style={styles.formError}>{error}</Text> : null}
+          <Pressable disabled={busy} onPress={submit} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
+            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Salva nuova password</Text>}
+          </Pressable>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+function SettingsScreen({ onBack }: { onBack: () => void }) {
+  return (
+    <ScrollView contentContainerStyle={styles.pageContent}>
+      <PageHeading title="Impostazioni" subtitle="Personalizza la tua esperienza" onBack={onBack} />
+      <View style={styles.settingsCard}>
+        <View style={styles.settingIcon}><Text style={styles.settingIconText}>☼</Text></View>
+        <View style={styles.settingCopy}><Text style={styles.settingTitle}>Tema dell'app</Text><Text style={styles.settingText}>Questa preferenza sarà disponibile in un prossimo aggiornamento.</Text></View>
+        <View style={styles.soonBadge}><Text style={styles.soonText}>PROSSIMAMENTE</Text></View>
+      </View>
+      <Text style={styles.settingsNote}>In questa sezione aggiungeremo progressivamente le preferenze personali dell'applicazione.</Text>
+    </ScrollView>
+  );
+}
+
+function PageHeading({ title, subtitle, onBack }: { title: string; subtitle: string; onBack: () => void }) {
+  return <View style={styles.pageHeading}><Pressable accessibilityLabel="Torna indietro" onPress={onBack} style={styles.backButton}><Text style={styles.backButtonText}>‹</Text></Pressable><View style={styles.pageHeadingCopy}><Text style={styles.pageTitle}>{title}</Text><Text style={styles.pageSubtitle}>{subtitle}</Text></View></View>;
+}
+
+function ProfileInfo({ label, value, last = false }: { label: string; value: string; last?: boolean }) {
+  return <View style={[styles.profileInfo, last && styles.profileInfoLast]}><Text style={styles.profileInfoLabel}>{label}</Text><Text style={styles.profileInfoValue}>{value}</Text></View>;
+}
+
+function MenuButton({ icon, title, subtitle, onPress, danger = false, last = false }: { icon: string; title: string; subtitle: string; onPress: () => void; danger?: boolean; last?: boolean }) {
+  return <Pressable onPress={onPress} style={({ pressed }) => [styles.menuButton, last && styles.menuButtonLast, pressed && styles.menuButtonPressed]}><View style={[styles.menuIcon, danger && styles.menuIconDanger]}><Text style={[styles.menuIconText, danger && styles.menuDangerText]}>{icon}</Text></View><View style={styles.menuCopy}><Text style={[styles.menuTitle, danger && styles.menuDangerText]}>{title}</Text><Text style={styles.menuSubtitle}>{subtitle}</Text></View><Text style={[styles.menuChevron, danger && styles.menuDangerText]}>›</Text></Pressable>;
 }
 
 function DoctorPatientDirectory({
@@ -482,6 +616,7 @@ function isValidFiscalCode(value: string) {
 }
 
 const styles = StyleSheet.create({
+  flexOne: { flex: 1 },
   centerScreen: { flex: 1, backgroundColor: "#edf7f4", alignItems: "center", justifyContent: "center" },
   authSafe: { flex: 1, backgroundColor: "#e5f5f1" }, authKeyboard: { flex: 1 },
   authContent: { flexGrow: 1, padding: 24, paddingTop: 48, paddingBottom: 34, alignItems: "center" },
@@ -502,8 +637,9 @@ const styles = StyleSheet.create({
   formError: { color: "#b42318", fontSize: 12, marginTop: 13, lineHeight: 17 }, primaryButton: { minHeight: 52, borderRadius: 15, backgroundColor: "#087f6a", alignItems: "center", justifyContent: "center", marginTop: 18, paddingHorizontal: 18 },
   primaryText: { color: "#fff", fontWeight: "900", fontSize: 15 }, pressed: { opacity: 0.82 }, switchText: { color: "#54756e", textAlign: "center", fontWeight: "600", marginTop: 20, fontSize: 13 }, switchLink: { color: "#087f6a", fontWeight: "900", textDecorationLine: "underline" }, demoNote: { color: "#71918a", marginTop: 24, fontSize: 10, textAlign: "center" },
   dashboardSafe: { flex: 1, backgroundColor: "#f1f7f5" }, fixedHeader: { minHeight: 68, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#dceae6", paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between", zIndex: 10 },
+  headerBrand: { color: "#123c34", fontSize: 23, lineHeight: 27, fontWeight: "900", letterSpacing: -0.8 },
   headerRight: { flexDirection: "row", alignItems: "center", gap: 10 }, liveBadge: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#edf8f5", paddingHorizontal: 9, paddingVertical: 7, borderRadius: 18 }, liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#12b76a" }, liveDotOffline: { backgroundColor: "#98a2b3" }, liveText: { color: "#42655f", fontSize: 10, fontWeight: "800" },
-  avatar: { width: 35, height: 35, borderRadius: 18, backgroundColor: "#c8eee6", alignItems: "center", justifyContent: "center" }, avatarText: { color: "#087f6a", fontWeight: "900" }, dashboardContent: { padding: 18, paddingBottom: 38, gap: 14 },
+  avatar: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#c8eee6", alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "transparent" }, avatarSelected: { borderColor: "#087f6a", backgroundColor: "#e3f7f2" }, avatarText: { color: "#087f6a", fontWeight: "900" }, dashboardContent: { padding: 18, paddingBottom: 38, gap: 14 },
   welcome: { color: "#153d35", fontSize: 24, fontWeight: "900", letterSpacing: -0.5 }, roleCaption: { color: "#6b817c", marginTop: 3, fontSize: 12 }, waitingCard: { minHeight: 260, borderRadius: 24, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", gap: 10, padding: 24 }, waitingTitle: { color: "#153d35", fontSize: 18, fontWeight: "800" }, muted: { color: "#6b817c", fontSize: 12 },
   patientStrip: { backgroundColor: "#dff4ef", borderRadius: 16, padding: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, overline: { color: "#438579", fontSize: 8, fontWeight: "900", letterSpacing: 1 }, patientName: { color: "#153d35", fontWeight: "800", marginTop: 3 }, patientCode: { color: "#5f817a", fontSize: 9 },
   postureCard: { padding: 18, borderRadius: 22, gap: 20 }, postureTop: { flexDirection: "row", gap: 13, alignItems: "flex-start" }, statusMark: { width: 43, height: 43, borderRadius: 22, alignItems: "center", justifyContent: "center" }, statusMarkText: { color: "#fff", fontWeight: "900", fontSize: 18 }, postureLabel: { fontSize: 19, fontWeight: "900" }, postureDetail: { color: "#526d67", fontSize: 12, lineHeight: 18, marginTop: 3 },
@@ -516,4 +652,9 @@ const styles = StyleSheet.create({
   directoryHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 5 }, directoryTitle: { color: "#153d35", fontSize: 19, fontWeight: "900" }, countBadge: { minWidth: 25, height: 25, paddingHorizontal: 7, borderRadius: 13, backgroundColor: "#cceee7", alignItems: "center", justifyContent: "center" }, countText: { color: "#087f6a", fontSize: 11, fontWeight: "900" },
   emptyPatients: { minHeight: 210, borderRadius: 21, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", padding: 28 }, emptyIcon: { color: "#64b9aa", fontSize: 38, marginBottom: 8 }, emptyText: { color: "#78908a", fontSize: 12, textAlign: "center", lineHeight: 18, marginTop: 5 },
   patientCard: { minHeight: 84, borderRadius: 18, backgroundColor: "#fff", padding: 14, flexDirection: "row", alignItems: "center", gap: 12, borderWidth: 1, borderColor: "#e0ece9" }, patientCardPressed: { backgroundColor: "#edf8f5", borderColor: "#9cd8cc" }, patientAvatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#cceee7", alignItems: "center", justifyContent: "center" }, patientAvatarText: { color: "#087f6a", fontSize: 19, fontWeight: "900" }, patientCardName: { color: "#153d35", fontSize: 15, fontWeight: "900" }, patientEmail: { color: "#67817b", fontSize: 11, marginTop: 2 }, patientCardRight: { alignItems: "flex-end", gap: 8 }, onlineBadge: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: 10, backgroundColor: "#e4f7ee", paddingHorizontal: 7, paddingVertical: 4 }, onlineText: { color: "#087f6a", fontSize: 8, fontWeight: "900" }, chevron: { color: "#5e8f85", fontSize: 25, lineHeight: 25 }, backArrow: { color: "#087f6a", fontSize: 28, lineHeight: 30, marginRight: 8 },
+  pageContent: { flexGrow: 1, padding: 18, paddingBottom: 42, gap: 16 }, pageHeading: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 2 }, backButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: "#fff", borderWidth: 1, borderColor: "#dceae6", alignItems: "center", justifyContent: "center" }, backButtonText: { color: "#087f6a", fontSize: 30, lineHeight: 31, marginTop: -2 }, pageHeadingCopy: { flex: 1 }, pageTitle: { color: "#153d35", fontSize: 23, fontWeight: "900", letterSpacing: -0.5 }, pageSubtitle: { color: "#6b817c", fontSize: 12, marginTop: 2 },
+  profileHero: { alignItems: "center", backgroundColor: "#dff4ef", borderRadius: 24, paddingVertical: 24, paddingHorizontal: 18 }, profileAvatar: { width: 72, height: 72, borderRadius: 36, backgroundColor: "#087f6a", alignItems: "center", justifyContent: "center", shadowColor: "#064b3f", shadowOpacity: 0.16, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 4 }, profileAvatarText: { color: "#fff", fontSize: 29, fontWeight: "900" }, profileName: { color: "#153d35", fontSize: 21, fontWeight: "900", marginTop: 12 }, profileRole: { color: "#087f6a", fontSize: 11, fontWeight: "800", marginTop: 4, textTransform: "uppercase", letterSpacing: 0.8 },
+  profileCard: { backgroundColor: "#fff", borderRadius: 21, paddingHorizontal: 17 }, profileInfo: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#e6efed" }, profileInfoLast: { borderBottomWidth: 0 }, profileInfoLabel: { color: "#78908a", fontSize: 9, fontWeight: "900", letterSpacing: 0.8 }, profileInfoValue: { color: "#153d35", fontSize: 15, fontWeight: "700", marginTop: 4 },
+  profileMenu: { backgroundColor: "#fff", borderRadius: 21, paddingHorizontal: 15 }, menuButton: { minHeight: 72, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: 1, borderBottomColor: "#e6efed" }, menuButtonLast: { borderBottomWidth: 0 }, menuButtonPressed: { opacity: 0.65 }, menuIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#dff5f0", alignItems: "center", justifyContent: "center" }, menuIconDanger: { backgroundColor: "#fee9e7" }, menuIconText: { color: "#087f6a", fontSize: 17, fontWeight: "900" }, menuDangerText: { color: "#b42318" }, menuCopy: { flex: 1 }, menuTitle: { color: "#153d35", fontSize: 14, fontWeight: "900" }, menuSubtitle: { color: "#78908a", fontSize: 10, marginTop: 3 }, menuChevron: { color: "#6f9189", fontSize: 26 },
+  formCard: { backgroundColor: "#fff", borderRadius: 23, padding: 19 }, passwordHint: { color: "#78908a", fontSize: 10, lineHeight: 15, marginTop: 11 }, settingsCard: { backgroundColor: "#fff", borderRadius: 21, padding: 17, flexDirection: "row", alignItems: "center", gap: 12 }, settingIcon: { width: 45, height: 45, borderRadius: 23, backgroundColor: "#dff5f0", alignItems: "center", justifyContent: "center" }, settingIconText: { color: "#087f6a", fontSize: 22 }, settingCopy: { flex: 1 }, settingTitle: { color: "#153d35", fontSize: 15, fontWeight: "900" }, settingText: { color: "#78908a", fontSize: 10, lineHeight: 15, marginTop: 3 }, soonBadge: { backgroundColor: "#edf4f2", borderRadius: 10, paddingHorizontal: 7, paddingVertical: 5 }, soonText: { color: "#608078", fontSize: 7, fontWeight: "900", letterSpacing: 0.4 }, settingsNote: { color: "#78908a", fontSize: 11, lineHeight: 17, textAlign: "center", paddingHorizontal: 18 },
 });

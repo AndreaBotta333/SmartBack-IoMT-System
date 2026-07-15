@@ -108,6 +108,24 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=8, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        if not re.search(r"\d", value) or not re.search(r"[^\w\s]", value, re.UNICODE):
+            raise ValueError("La nuova password deve contenere almeno un numero e un simbolo speciale")
+        return value
+
+    @model_validator(mode="after")
+    def validate_password_difference(self):
+        if self.current_password == self.new_password:
+            raise ValueError("La nuova password deve essere diversa da quella attuale")
+        return self
+
+
 class AssociatePatientRequest(BaseModel):
     email: EmailStr
 
@@ -412,6 +430,19 @@ def logout(authorization: str | None = Header(default=None)):
     if authorization and authorization.startswith("Bearer "):
         auth_db.execute("DELETE FROM sessions WHERE token=?", (authorization.removeprefix("Bearer ").strip(),))
         auth_db.commit()
+
+
+@app.put("/api/v1/auth/password", status_code=204)
+def change_password(body: ChangePasswordRequest, user: sqlite3.Row = Depends(current_user)):
+    current_digest, _ = hash_password(body.current_password, bytes.fromhex(user["password_salt"]))
+    if not hmac.compare_digest(current_digest, user["password_hash"]):
+        raise HTTPException(status_code=400, detail="La password attuale non è corretta")
+    new_digest, new_salt = hash_password(body.new_password)
+    auth_db.execute(
+        "UPDATE users SET password_hash=?, password_salt=? WHERE id=?",
+        (new_digest, new_salt, user["id"]),
+    )
+    auth_db.commit()
 
 
 @app.get("/api/v1/doctor/patients")

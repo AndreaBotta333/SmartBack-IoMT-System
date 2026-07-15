@@ -168,3 +168,42 @@ Rendere il progetto disponibile ai collaboratori tramite una repository GitHub c
 - Primo commit applicativo creato: `fa6a22a` (`feat: pubblica la struttura iniziale di SmartBack`).
 - Push completato sul ramo remoto `origin/main`.
 - Repository locale e repository GitHub sincronizzate.
+
+## 15 luglio 2026 — Profilo personale, impostazioni e Safe Area
+
+### Obiettivo
+
+Migliorare l'impaginazione delle schermate operative e introdurre una navigazione personale distinta dal logout.
+
+### Modifiche
+
+- Integrata la Safe Area nativa di Expo per evitare sovrapposizioni con ora, batteria, notch e indicatori di sistema.
+- Sostituito il logo nell'intestazione operativa con il solo nome testuale `SmartBack`.
+- Trasformato l'avatar con iniziale in un pulsante che apre la pagina Informazioni personali.
+- Aggiunta la pagina Profilo con nome, cognome, email e ruolo.
+- Spostato il logout nella pagina Profilo, con richiesta di conferma prima della disconnessione.
+- Aggiunta la pagina Cambia password con password attuale, nuova password e conferma.
+- Implementato nel backend il cambio reale della password con verifica della password attuale e salvataggio PBKDF2 con nuovo salt.
+- Aggiunta la pagina Impostazioni con una sezione predisposta per il futuro tema dell'app.
+- Mantenuti tutti i testi visibili all'utente in italiano.
+
+### File interessati
+
+- `mobile/app/App.tsx`
+- `mobile/app/package.json`
+- `mobile/app/package-lock.json`
+- `backend/app/main.py`
+- `REPORT_TEMPORANEI/REGISTRO_MODIFICHE.md`
+
+### Verifiche
+
+- Controllo TypeScript completato senza errori.
+- Controllo della sintassi Python completato senza errori.
+- Bundle Android Expo generata correttamente, con 720 moduli elaborati.
+- Backend attivo e in stato `ok`.
+- Rotta `/api/v1/auth/password` presente nello schema OpenAPI.
+
+### Attività aperte
+
+- Verificare visivamente le nuove schermate su più modelli di telefono.
+- Definire e implementare in seguito le preferenze effettive della pagina Impostazioni.
