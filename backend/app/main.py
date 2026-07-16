@@ -21,21 +21,13 @@ from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
-MQTT_HOST = os.getenv("MQTT_HOST", "mosquitto")
-MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
-POSTURE_TOPIC = os.getenv("MQTT_POSTURE_TOPIC", "smartback/normalized/posture")
-DEVICE_TOPIC = os.getenv("MQTT_DEVICE_TOPIC", "smartback/normalized/device")
-INFLUX_URL = os.getenv("INFLUXDB_URL", "http://influxdb:8086")
-INFLUX_TOKEN = os.getenv("INFLUXDB_TOKEN", "")
-INFLUX_ORG = os.getenv("INFLUXDB_ORG", "smartback")
-INFLUX_BUCKET = os.getenv("INFLUXDB_BUCKET", "posture")
-
-# Demonstration defaults, not clinical thresholds. They will become configurable.
-MODERATE_DEVIATION_DEG = float(os.getenv("MODERATE_DEVIATION_DEG", "10"))
-MARKED_DEVIATION_DEG = float(os.getenv("MARKED_DEVIATION_DEG", "20"))
-PERSISTENCE_SECONDS = float(os.getenv("PERSISTENCE_SECONDS", "5"))
-AUTH_DB_PATH = os.getenv("AUTH_DB_PATH", "/app/data/smartback.db")
-MEDICAL_REGISTRATION_CODE = os.getenv("MEDICAL_REGISTRATION_CODE", "SMARTBACK-MED-2026")
+from app.config import (
+    ALERT_TOPIC, AUTH_DB_PATH, DEVICE_TOPIC, INFLUX_BUCKET, INFLUX_ORG, INFLUX_TOKEN,
+    INFLUX_URL, MARKED_DEVIATION_DEG, MEDICAL_REGISTRATION_CODE,
+    MODERATE_DEVIATION_DEG, MQTT_HOST, MQTT_PORT, PERSISTENCE_SECONDS,
+    POSTURE_TOPIC,
+)
+from app.device_contract import NormalizedDeviceStatus, NormalizedPostureSample
 EMAIL_DOMAIN_PATTERN = re.compile(
     r"^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,63}$",
     re.IGNORECASE,
@@ -46,6 +38,7 @@ latest_posture: dict[str, Any] | None = None
 latest_device: dict[str, Any] | None = None
 reference_pitch_by_device: dict[str, float] = {}
 deviation_started_by_device: dict[str, float] = {}
+last_alert_by_device: dict[str, str | None] = {}
 websockets: set[WebSocket] = set()
 main_loop: asyncio.AbstractEventLoop | None = None
 mqtt_client: mqtt.Client | None = None
@@ -429,15 +422,41 @@ def on_connect(client: mqtt.Client, userdata: Any, flags: Any, reason_code: Any,
 def on_message(client: mqtt.Client, userdata: Any, message: mqtt.MQTTMessage) -> None:
     global latest_posture, latest_device
     try:
-        payload = json.loads(message.payload.decode("utf-8"))
+        raw_payload = json.loads(message.payload.decode("utf-8"))
         if message.topic == POSTURE_TOPIC:
+            payload = NormalizedPostureSample.model_validate(raw_payload).model_dump()
             processed = process_posture(payload)
             persist_posture(processed)
+            previous_alert = last_alert_by_device.get(processed["device_id"])
+            current_alert = processed["alert"]
+            if current_alert != previous_alert:
+                alert_payload = {
+                    "schema_version": 1,
+                    "timestamp": int(processed["timestamp"]),
+                    "device_id": processed["device_id"],
+                    "patient_id": processed["patient_id"],
+                    "category": "posture",
+                    "severity": "critical" if current_alert == "POSTURE_MARKED_DEVIATION" else "warning",
+                    "code": current_alert or previous_alert or "POSTURE_OK",
+                    "message": (
+                        "Deviazione posturale marcata"
+                        if current_alert == "POSTURE_MARKED_DEVIATION"
+                        else "Deviazione posturale prolungata"
+                        if current_alert == "POSTURE_PROLONGED_DEVIATION"
+                        else "Postura rientrata nei limiti"
+                    ),
+                    "active": current_alert is not None,
+                    "deviation_deg": processed["deviation_deg"],
+                    "duration_seconds": processed["deviation_duration_seconds"],
+                }
+                client.publish(ALERT_TOPIC, json.dumps(alert_payload), qos=1)
+                last_alert_by_device[processed["device_id"]] = current_alert
             with state_lock:
                 latest_posture = processed
             if main_loop:
                 asyncio.run_coroutine_threadsafe(broadcast(processed), main_loop)
         elif message.topic == DEVICE_TOPIC:
+            payload = NormalizedDeviceStatus.model_validate(raw_payload).model_dump()
             with state_lock:
                 latest_device = payload
     except Exception as exc:

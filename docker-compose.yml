@@ -55,6 +55,7 @@ services:
     environment:
       <<: *influx-env
       FLOWS: flows.json
+      SMARTSHIRT_PATIENT_ID: ${SMARTSHIRT_PATIENT_ID:-patient-demo-001}
     volumes:
       - ./nodered/smartback:/data
     depends_on:
@@ -78,6 +79,7 @@ services:
       MQTT_PORT: 1883
       MQTT_POSTURE_TOPIC: smartback/normalized/posture
       MQTT_DEVICE_TOPIC: smartback/normalized/device
+      MQTT_ALERT_TOPIC: smartback/alerts/posture
       MEDICAL_REGISTRATION_CODE: ${MEDICAL_REGISTRATION_CODE:-SMARTBACK-MED-2026}
     depends_on:
       mosquitto:
@@ -86,14 +88,15 @@ services:
         condition: service_healthy
 
   simulator:
+    profiles: ["simulation"]
     build: ./simulator
     container_name: smartback-simulator
     restart: unless-stopped
     environment:
       MQTT_HOST: mosquitto
       MQTT_PORT: 1883
-      DEVICE_ID: howdy-sim-001
-      PATIENT_ID: patient-demo-001
+      DEVICE_ID: ${SIMULATOR_DEVICE_ID:-howdy-sim-001}
+      PATIENT_ID: ${PATIENT_ID:-patient-demo-001}
       PUBLISH_INTERVAL_SECONDS: 1
     depends_on:
       mosquitto:
