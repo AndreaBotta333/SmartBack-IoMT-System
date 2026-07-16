@@ -39,6 +39,29 @@
       "targets": [{"query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"posture\" and (r._field == \"deviation_deg\" or r._field == \"pitch_deg\")) |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)", "refId": "A"}],
       "title": "Andamento posturale",
       "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}]}}, "overrides": []},
+      "gridPos": {"h": 7, "w": 6, "x": 0, "y": 18},
+      "id": 4,
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto", "wideLayout": true},
+      "pluginVersion": "12.0.2",
+      "targets": [{"query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"shirt_raw\" and r._field == \"payload_json\") |> count()", "refId": "A"}],
+      "title": "Pacchetti maglia ricevuti",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 7, "w": 18, "x": 6, "y": 18},
+      "id": 5,
+      "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true},
+      "pluginVersion": "12.0.2",
+      "targets": [{"query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"alerts\" and (r._field == \"active\" or r._field == \"message\")) |> sort(columns: [\"_time\"], desc: true) |> limit(n: 50)", "refId": "A"}],
+      "title": "Registro alert",
+      "transformations": [{"id": "organize", "options": {"excludeByName": {"_measurement": true, "_start": true, "_stop": true, "result": true, "table": true}, "indexByName": {}, "renameByName": {"_time": "Ora", "_value": "Valore", "category": "Categoria", "code": "Codice", "device_id": "Device", "patient_id": "Paziente", "severity": "Severita"}}}],
+      "type": "table"
     }
   ],
   "refresh": "5s",
@@ -50,5 +73,5 @@
   "timezone": "browser",
   "title": "SmartBack - Monitoraggio posturale",
   "uid": "smartback-overview",
-  "version": 1
+  "version": 2
 }

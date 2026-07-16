@@ -1,1 +1,543 @@
-[{"id":"smartback-tab","type":"tab","label":"SmartBack ingestion","disabled":false,"info":"Ricezione dei dati grezzi, normalizzazione tecnica e persistenza raw. La logica posturale resta nel backend Python."},{"id":"cfg-smartback-mqtt","type":"mqtt-broker","name":"SmartBack Mosquitto","broker":"mosquitto","port":"1883","clientid":"smartback-nodered","autoConnect":true,"usetls":false,"protocolVersion":"4","keepalive":"60","cleansession":true,"autoUnsubscribe":true,"birthTopic":"smartback/status/nodered","birthQos":"0","birthPayload":"online","birthMsg":{},"closeTopic":"smartback/status/nodered","closeQos":"0","closePayload":"offline","closeMsg":{},"willTopic":"smartback/status/nodered","willQos":"0","willPayload":"offline","willMsg":{}},{"id":"mqtt-raw-acc","type":"mqtt in","z":"smartback-tab","name":"HOWDY raw accelerometer","topic":"smartback/raw/accgyro","qos":"1","datatype":"auto-detect","broker":"cfg-smartback-mqtt","nl":false,"rap":true,"rh":0,"inputs":0,"x":160,"y":100,"wires":[["json-acc"]]},{"id":"json-acc","type":"json","z":"smartback-tab","name":"Parse JSON","property":"payload","action":"obj","pretty":false,"x":380,"y":100,"wires":[["normalize-acc"]]},{"id":"normalize-acc","type":"function","z":"smartback-tab","name":"Validate and normalize raw sample","func":"const p = msg.payload;\nif (!p || !p.device_id || !p.patient_id || !p.timestamp || !Array.isArray(p.samples) || p.samples.length === 0) {\n    node.warn('Invalid accelerometer payload');\n    return [null, null];\n}\nconst s = p.samples[0];\nfor (const axis of ['x','y','z']) {\n    if (typeof s[axis] !== 'number' || !Number.isFinite(s[axis])) return [null, null];\n}\nconst normalized = {\n    schema_version: 1, device_id: String(p.device_id), patient_id: String(p.patient_id),\n    timestamp: Number(p.timestamp), sequence: Number(p.sequence || 0), type: 'accgyro',\n    x: s.x, y: s.y, z: s.z, quality: String(p.quality || 'unknown'),\n    source_topic: msg.topic, simulation_state: p.simulation_state || null\n};\nconst mqttMsg = { topic: 'smartback/normalized/posture', payload: normalized, qos: 1 };\nconst tags = `device_id=${normalized.device_id},patient_id=${normalized.patient_id},quality=${normalized.quality}`;\nconst fields = `x=${normalized.x},y=${normalized.y},z=${normalized.z},sequence=${normalized.sequence}i`;\nconst influxMsg = {\n    method: 'POST',\n    url: `${env.get('INFLUXDB_URL')}/api/v2/write?org=${env.get('INFLUXDB_ORG')}&bucket=${env.get('INFLUXDB_BUCKET')}&precision=ms`,\n    headers: {'Authorization': `Token ${env.get('INFLUXDB_TOKEN')}`, 'Content-Type': 'text/plain; charset=utf-8'},\n    payload: `raw_accelerometer,${tags} ${fields} ${normalized.timestamp}`\n};\nreturn [mqttMsg, influxMsg];","outputs":2,"timeout":0,"noerr":0,"initialize":"","finalize":"","libs":[],"x":630,"y":100,"wires":[["mqtt-normalized-posture","debug-posture"],["influx-write-raw"]]},{"id":"mqtt-normalized-posture","type":"mqtt out","z":"smartback-tab","name":"Normalized posture","topic":"","qos":"","retain":"false","respTopic":"","contentType":"application/json","userProps":"","correl":"","expiry":"","broker":"cfg-smartback-mqtt","x":940,"y":70,"wires":[]},{"id":"influx-write-raw","type":"http request","z":"smartback-tab","name":"Persist raw in InfluxDB","method":"use","ret":"txt","paytoqs":"ignore","url":"","tls":"","persist":false,"proxy":"","insecureHTTPParser":false,"authType":"","senderr":false,"headers":[],"x":940,"y":180,"wires":[["status-raw-write"]]},{"id":"status-raw-write","type":"status","z":"smartback-tab","name":"","scope":["influx-write-raw"],"x":1180,"y":180,"wires":[[]]},{"id":"debug-posture","type":"debug","z":"smartback-tab","name":"Normalized sample","active":false,"tosidebar":true,"console":false,"tostatus":false,"complete":"payload","targetType":"msg","statusVal":"","statusType":"auto","x":930,"y":120,"wires":[]},{"id":"mqtt-raw-battery","type":"mqtt in","z":"smartback-tab","name":"HOWDY raw battery","topic":"smartback/raw/battery","qos":"1","datatype":"auto-detect","broker":"cfg-smartback-mqtt","nl":false,"rap":true,"rh":0,"inputs":0,"x":140,"y":280,"wires":[["json-battery"]]},{"id":"json-battery","type":"json","z":"smartback-tab","name":"Parse JSON","property":"payload","action":"obj","pretty":false,"x":370,"y":280,"wires":[["normalize-battery"]]},{"id":"normalize-battery","type":"function","z":"smartback-tab","name":"Validate device status","func":"const p = msg.payload;\nif (!p || !p.device_id || !p.patient_id || !p.timestamp || typeof p.state_of_charge !== 'number') return [null, null];\nconst normalized = {schema_version: 1, device_id: String(p.device_id), patient_id: String(p.patient_id), timestamp: Number(p.timestamp), type: 'battery', state_of_charge: p.state_of_charge, charging: Boolean(p.charging), quality: String(p.quality || 'unknown')};\nconst mqttMsg = {topic: 'smartback/normalized/device', payload: normalized, qos: 1, retain: true};\nconst tags = `device_id=${normalized.device_id},patient_id=${normalized.patient_id}`;\nconst influxMsg = {method: 'POST', url: `${env.get('INFLUXDB_URL')}/api/v2/write?org=${env.get('INFLUXDB_ORG')}&bucket=${env.get('INFLUXDB_BUCKET')}&precision=ms`, headers: {'Authorization': `Token ${env.get('INFLUXDB_TOKEN')}`, 'Content-Type': 'text/plain; charset=utf-8'}, payload: `device_status,${tags} state_of_charge=${normalized.state_of_charge},charging=${normalized.charging} ${normalized.timestamp}`};\nreturn [mqttMsg, influxMsg];","outputs":2,"timeout":0,"noerr":0,"initialize":"","finalize":"","libs":[],"x":620,"y":280,"wires":[["mqtt-normalized-device"],["influx-write-device"]]},{"id":"mqtt-normalized-device","type":"mqtt out","z":"smartback-tab","name":"Normalized device status","topic":"","qos":"","retain":"true","respTopic":"","contentType":"application/json","userProps":"","correl":"","expiry":"","broker":"cfg-smartback-mqtt","x":940,"y":250,"wires":[]},{"id":"influx-write-device","type":"http request","z":"smartback-tab","name":"Persist device status","method":"use","ret":"txt","paytoqs":"ignore","url":"","tls":"","persist":false,"proxy":"","insecureHTTPParser":false,"authType":"","senderr":false,"headers":[],"x":940,"y":310,"wires":[[]]},{"id":"comment","type":"comment","z":"smartback-tab","name":"Node-RED performs transport validation only. Posture calculations are in FastAPI.","info":"","x":420,"y":40,"wires":[]}]
+[
+  {
+    "id": "smartback-tab",
+    "type": "tab",
+    "label": "SmartBack shirt ingestion",
+    "disabled": false,
+    "info": "Adattatore per il protocollo MQTT non modificabile dell'ESP32. Riceve unisadiem/smartshirt/<device>/<packet>, conserva il raw e normalizza ACC_GYRO e BATTERY_INFO per FastAPI."
+  },
+  {
+    "id": "cfg-smartback-mqtt",
+    "type": "mqtt-broker",
+    "name": "SmartBack Mosquitto",
+    "broker": "mosquitto",
+    "port": "1883",
+    "clientid": "smartback-nodered",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true,
+    "autoUnsubscribe": true,
+    "birthTopic": "smartback/status/nodered",
+    "birthQos": "0",
+    "birthPayload": "online",
+    "birthMsg": {},
+    "closeTopic": "smartback/status/nodered",
+    "closeQos": "0",
+    "closePayload": "offline",
+    "closeMsg": {},
+    "willTopic": "smartback/status/nodered",
+    "willQos": "0",
+    "willPayload": "offline",
+    "willMsg": {}
+  },
+  {
+    "id": "shirt-comment",
+    "type": "comment",
+    "z": "smartback-tab",
+    "name": "1. RICEZIONE — protocollo ESP32 invariato",
+    "info": "Il device_id viene ricavato dal topic. Il patient_id viene configurato sul server con SMARTSHIRT_PATIENT_ID.",
+    "x": 310,
+    "y": 40,
+    "wires": []
+  },
+  {
+    "id": "mqtt-shirt-all",
+    "type": "mqtt in",
+    "z": "smartback-tab",
+    "name": "MQTT IN — pacchetti della maglia",
+    "topic": "unisadiem/smartshirt/+/#",
+    "qos": "1",
+    "datatype": "auto-detect",
+    "broker": "cfg-smartback-mqtt",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 180,
+    "y": 100,
+    "wires": [
+      [
+        "json-shirt",
+        "debug-mqtt-input"
+      ]
+    ]
+  },
+  {
+    "id": "json-shirt",
+    "type": "json",
+    "z": "smartback-tab",
+    "name": "Decodifica JSON dell'ESP32",
+    "property": "payload",
+    "action": "obj",
+    "pretty": false,
+    "x": 420,
+    "y": 100,
+    "wires": [
+      [
+        "adapt-shirt-packet",
+        "debug-json-parsed"
+      ]
+    ]
+  },
+  {
+    "id": "adapt-shirt-packet",
+    "type": "function",
+    "z": "smartback-tab",
+    "name": "NORMALIZZA — identifica tipo e prepara output",
+    "func": "const parts = String(msg.topic || '').split('/');\nconst p = msg.payload;\nif (parts.length < 4 || parts[0] !== 'unisadiem' || parts[1] !== 'smartshirt' || !p || typeof p !== 'object') {\n    node.warn(`Pacchetto smart shirt non valido su ${msg.topic}`);\n    return [null, null, null, null, null];\n}\n\nconst deviceId = parts[2];\nconst packetType = parts.slice(3).join('_').toUpperCase();\nconst patientId = env.get('SMARTSHIRT_PATIENT_ID') || 'patient-demo-001';\nconst receivedAt = Date.now();\nconst envelope = {\n    ...p,\n    device_id: deviceId,\n    patient_id: patientId,\n    packet_type: packetType,\n    source_topic: msg.topic,\n    source_timestamp: p.timestamp ?? null,\n    gateway_received_at: receivedAt,\n    quality: 'measured'\n};\n\nconst rawMsg = {\n    topic: `smartback/shirt/raw/${deviceId}/${packetType.toLowerCase()}`,\n    payload: envelope,\n    qos: 1,\n    retain: false\n};\n\nconst escapedJson = JSON.stringify(envelope).replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"');\nconst safeDevice = deviceId.replace(/[ ,=]/g, '_');\nconst safeType = packetType.replace(/[ ,=]/g, '_');\nconst influxMsg = {\n    method: 'POST',\n    url: `${env.get('INFLUXDB_URL')}/api/v2/write?org=${encodeURIComponent(env.get('INFLUXDB_ORG'))}&bucket=${encodeURIComponent(env.get('INFLUXDB_BUCKET'))}&precision=ms`,\n    headers: {\n        Authorization: `Token ${env.get('INFLUXDB_TOKEN')}`,\n        'Content-Type': 'text/plain; charset=utf-8'\n    },\n    payload: `shirt_raw,device_id=${safeDevice},packet_type=${safeType} payload_json=\"${escapedJson}\" ${receivedAt}`\n};\n\nlet postureMsg = null;\nlet deviceMsg = null;\nlet alertMsg = null;\nif (packetType === 'ACC_GYRO' || p.type === 'accgyro') {\n    if (!Array.isArray(p.samples) || p.samples.length === 0) {\n        node.warn(`ACC_GYRO senza campioni da ${deviceId}`);\n    } else {\n        const valid = p.samples.filter(s => s && ['x', 'y', 'z'].every(axis => Number.isFinite(Number(s[axis]))));\n        if (valid.length > 0) {\n            const mean = axis => valid.reduce((sum, sample) => sum + Number(sample[axis]), 0) / valid.length;\n            const mx = mean('x');\n            const my = mean('y');\n            const mz = mean('z');\n            const magnitude = Math.sqrt(mx * mx + my * my + mz * mz);\n            if (magnitude > 0) {\n                postureMsg = {\n                    topic: 'smartback/normalized/posture',\n                    qos: 1,\n                    retain: false,\n                    payload: {\n                        schema_version: 1,\n                        device_id: deviceId,\n                        patient_id: patientId,\n                        timestamp: receivedAt,\n                        sequence: Number(p.samplenum || 0),\n                        type: 'accgyro',\n                        sampling_frequency: Number(p.sampling_frequency || 0),\n                        x: mx / magnitude,\n                        y: my / magnitude,\n                        z: mz / magnitude,\n                        quality: 'measured',\n                        source_topic: msg.topic,\n                        source_timestamp: p.timestamp ?? null,\n                        sample_count: valid.length,\n                        orientation: p.orientation ?? null\n                    }\n                };\n            }\n        }\n    }\n} else if (packetType === 'BATTERY_INFO' || p.type === 'battery') {\n    const soc = Number(p.state_of_charge);\n    if (Number.isFinite(soc)) {\n        const boundedSoc = Math.max(0, Math.min(100, soc));\n        deviceMsg = {\n            topic: 'smartback/normalized/device',\n            qos: 1,\n            retain: true,\n            payload: {\n                schema_version: 1,\n                device_id: deviceId,\n                patient_id: patientId,\n                timestamp: receivedAt,\n                type: 'battery',\n                state_of_charge: boundedSoc,\n                charging: Boolean(Number(p.charging)),\n                quality: 'measured',\n                source_topic: msg.topic,\n                source_timestamp: p.timestamp ?? null,\n                voltage: p.voltage ?? null,\n                temperature: p.temperature ?? null\n            }\n        };\n        const batteryStates = context.get('batteryStates') || {};\n        const nextState = boundedSoc <= 10 ? 'critical' : boundedSoc <= 20 ? 'warning' : null;\n        const previousState = batteryStates[deviceId] || null;\n        if (nextState !== previousState) {\n            alertMsg = {\n                topic: 'smartback/alerts/device', qos: 1, retain: false,\n                payload: {\n                    schema_version: 1, timestamp: receivedAt, device_id: deviceId, patient_id: patientId,\n                    category: 'device', severity: nextState || 'info', code: nextState === 'critical' ? 'BATTERY_CRITICAL' : nextState === 'warning' ? 'BATTERY_LOW' : 'BATTERY_RECOVERED',\n                    message: nextState === 'critical' ? `Batteria critica: ${boundedSoc}%` : nextState === 'warning' ? `Batteria bassa: ${boundedSoc}%` : `Batteria ripristinata: ${boundedSoc}%`,\n                    active: nextState !== null, state_of_charge: boundedSoc\n                }\n            };\n            batteryStates[deviceId] = nextState;\n            context.set('batteryStates', batteryStates);\n        }\n    }\n} else if (packetType === 'DATALOSS' || p.type === 'dataloss') {\n    alertMsg = {\n        topic: 'smartback/alerts/device', qos: 1, retain: false,\n        payload: {\n            schema_version: 1, timestamp: receivedAt, device_id: deviceId, patient_id: patientId,\n            category: 'data_quality', severity: 'warning', code: 'DATA_LOSS',\n            message: `Perdita dati segnalata dalla maglia: ${p.value ?? 'valore non disponibile'}`,\n            active: true, value: p.value ?? null\n        }\n    };\n}\n\nreturn [rawMsg, postureMsg, deviceMsg, influxMsg, alertMsg];",
+    "outputs": 5,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 670,
+    "y": 100,
+    "wires": [
+      [
+        "mqtt-shirt-raw",
+        "debug-shirt"
+      ],
+      [
+        "mqtt-normalized-posture",
+        "debug-posture-normalized"
+      ],
+      [
+        "mqtt-normalized-device",
+        "debug-device-normalized"
+      ],
+      [
+        "influx-write-shirt-raw"
+      ],
+      [
+        "mqtt-device-alert"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt-shirt-raw",
+    "type": "mqtt out",
+    "z": "smartback-tab",
+    "name": "MQTT OUT — copia raw interna",
+    "topic": "",
+    "qos": "",
+    "retain": "false",
+    "respTopic": "",
+    "contentType": "application/json",
+    "userProps": "",
+    "correl": "",
+    "expiry": "",
+    "broker": "cfg-smartback-mqtt",
+    "x": 960,
+    "y": 60,
+    "wires": []
+  },
+  {
+    "id": "mqtt-normalized-posture",
+    "type": "mqtt out",
+    "z": "smartback-tab",
+    "name": "MQTT OUT — postura → FastAPI",
+    "topic": "",
+    "qos": "",
+    "retain": "false",
+    "respTopic": "",
+    "contentType": "application/json",
+    "userProps": "",
+    "correl": "",
+    "expiry": "",
+    "broker": "cfg-smartback-mqtt",
+    "x": 980,
+    "y": 110,
+    "wires": []
+  },
+  {
+    "id": "mqtt-normalized-device",
+    "type": "mqtt out",
+    "z": "smartback-tab",
+    "name": "MQTT OUT — batteria/device",
+    "topic": "",
+    "qos": "",
+    "retain": "true",
+    "respTopic": "",
+    "contentType": "application/json",
+    "userProps": "",
+    "correl": "",
+    "expiry": "",
+    "broker": "cfg-smartback-mqtt",
+    "x": 980,
+    "y": 160,
+    "wires": []
+  },
+  {
+    "id": "influx-write-shirt-raw",
+    "type": "http request",
+    "z": "smartback-tab",
+    "name": "INFLUXDB — salva pacchetto raw",
+    "method": "use",
+    "ret": "txt",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "insecureHTTPParser": false,
+    "authType": "",
+    "senderr": false,
+    "headers": [],
+    "x": 980,
+    "y": 210,
+    "wires": [
+      [
+        "debug-influx-error"
+      ]
+    ]
+  },
+  {
+    "id": "debug-shirt",
+    "type": "debug",
+    "z": "smartback-tab",
+    "name": "DEBUG — raw arricchito",
+    "active": false,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 990,
+    "y": 260,
+    "wires": []
+  },
+  {
+    "id": "debug-influx-error",
+    "type": "debug",
+    "z": "smartback-tab",
+    "name": "DEBUG — esito salvataggio raw",
+    "active": false,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "statusCode",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 1240,
+    "y": 210,
+    "wires": []
+  },
+  {
+    "id": "debug-mqtt-input",
+    "type": "debug",
+    "z": "smartback-tab",
+    "name": "DEBUG 1 - MQTT ESP32",
+    "active": false,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "true",
+    "targetType": "full",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 410,
+    "y": 320,
+    "wires": []
+  },
+  {
+    "id": "debug-json-parsed",
+    "type": "debug",
+    "z": "smartback-tab",
+    "name": "DEBUG 2 - JSON decodificato",
+    "active": false,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 420,
+    "y": 270,
+    "wires": []
+  },
+  {
+    "id": "debug-posture-normalized",
+    "type": "debug",
+    "z": "smartback-tab",
+    "name": "DEBUG 3 - Postura normalizzata",
+    "active": false,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 1010,
+    "y": 320,
+    "wires": []
+  },
+  {
+    "id": "debug-device-normalized",
+    "type": "debug",
+    "z": "smartback-tab",
+    "name": "DEBUG 4 - Device normalizzato",
+    "active": false,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 1300,
+    "y": 320,
+    "wires": []
+  },
+  {
+    "id": "alerts-comment",
+    "type": "comment",
+    "z": "smartback-tab",
+    "name": "3. ALERT — device, qualità dati e postura",
+    "info": "Gli alert device sono creati da Node-RED. Gli alert posturali sono creati da FastAPI quando cambia lo stato, poi gestiti e archiviati qui.",
+    "x": 250,
+    "y": 400,
+    "wires": []
+  },
+  {
+    "id": "mqtt-device-alert",
+    "type": "mqtt out",
+    "z": "smartback-tab",
+    "name": "MQTT OUT — alert device",
+    "topic": "",
+    "qos": "",
+    "retain": "false",
+    "respTopic": "",
+    "contentType": "application/json",
+    "userProps": "",
+    "correl": "",
+    "expiry": "",
+    "broker": "cfg-smartback-mqtt",
+    "x": 980,
+    "y": 370,
+    "wires": []
+  },
+  {
+    "id": "mqtt-alerts-in",
+    "type": "mqtt in",
+    "z": "smartback-tab",
+    "name": "MQTT IN — tutti gli alert",
+    "topic": "smartback/alerts/+",
+    "qos": "1",
+    "datatype": "auto-detect",
+    "broker": "cfg-smartback-mqtt",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 150,
+    "y": 460,
+    "wires": [
+      [
+        "json-alert"
+      ]
+    ]
+  },
+  {
+    "id": "json-alert",
+    "type": "json",
+    "z": "smartback-tab",
+    "name": "Decodifica JSON alert",
+    "property": "payload",
+    "action": "obj",
+    "pretty": false,
+    "x": 350,
+    "y": 460,
+    "wires": [
+      [
+        "manage-alert"
+      ]
+    ]
+  },
+  {
+    "id": "manage-alert",
+    "type": "function",
+    "z": "smartback-tab",
+    "name": "VALIDA ALERT — prepara archivio",
+    "func": "const a = msg.payload;\nif (!a || !a.device_id || !a.code || !Number.isFinite(Number(a.timestamp))) {\n    node.warn(`Alert non valido da ${msg.topic}`);\n    return [null, null];\n}\nconst safe = value => String(value ?? 'unknown').replace(/[ ,=]/g, '_');\nconst escapedMessage = String(a.message || a.code).replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"');\nconst influxMsg = {\n    method: 'POST',\n    url: `${env.get('INFLUXDB_URL')}/api/v2/write?org=${encodeURIComponent(env.get('INFLUXDB_ORG'))}&bucket=${encodeURIComponent(env.get('INFLUXDB_BUCKET'))}&precision=ms`,\n    headers: {Authorization: `Token ${env.get('INFLUXDB_TOKEN')}`, 'Content-Type': 'text/plain; charset=utf-8'},\n    payload: `alerts,device_id=${safe(a.device_id)},patient_id=${safe(a.patient_id)},category=${safe(a.category)},severity=${safe(a.severity)},code=${safe(a.code)} active=${Boolean(a.active)},message=\"${escapedMessage}\" ${Number(a.timestamp)}`\n};\nconst debugMsg = {...msg, payload: {...a, received_by_nodered_at: Date.now()}};\nreturn [influxMsg, debugMsg];",
+    "outputs": 2,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 590,
+    "y": 460,
+    "wires": [
+      [
+        "influx-write-alert"
+      ],
+      [
+        "debug-alert"
+      ]
+    ]
+  },
+  {
+    "id": "influx-write-alert",
+    "type": "http request",
+    "z": "smartback-tab",
+    "name": "INFLUXDB — salva alert",
+    "method": "use",
+    "ret": "txt",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "insecureHTTPParser": false,
+    "authType": "",
+    "senderr": false,
+    "headers": [],
+    "x": 840,
+    "y": 440,
+    "wires": [
+      [
+        "debug-alert-storage"
+      ]
+    ]
+  },
+  {
+    "id": "debug-alert",
+    "type": "debug",
+    "z": "smartback-tab",
+    "name": "DEBUG ALERT ATTIVI/RISOLTI",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 880,
+    "y": 490,
+    "wires": []
+  },
+  {
+    "id": "debug-alert-storage",
+    "type": "debug",
+    "z": "smartback-tab",
+    "name": "DEBUG salvataggio alert",
+    "active": false,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "statusCode",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 1080,
+    "y": 440,
+    "wires": []
+  },
+  {
+    "id": "mqtt-device-persist-in",
+    "type": "mqtt in",
+    "z": "smartback-tab",
+    "name": "MQTT IN — stato device normalizzato",
+    "topic": "smartback/normalized/device",
+    "qos": "1",
+    "datatype": "auto-detect",
+    "broker": "cfg-smartback-mqtt",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 180,
+    "y": 560,
+    "wires": [
+      [
+        "json-device-persist"
+      ]
+    ]
+  },
+  {
+    "id": "json-device-persist",
+    "type": "json",
+    "z": "smartback-tab",
+    "name": "Decodifica JSON device",
+    "property": "payload",
+    "action": "obj",
+    "pretty": false,
+    "x": 420,
+    "y": 560,
+    "wires": [
+      [
+        "prepare-device-influx"
+      ]
+    ]
+  },
+  {
+    "id": "prepare-device-influx",
+    "type": "function",
+    "z": "smartback-tab",
+    "name": "PREPARA — measurement device_status",
+    "func": "const p = msg.payload;\nif (!p || !p.device_id || !Number.isFinite(Number(p.timestamp)) || !Number.isFinite(Number(p.state_of_charge))) return null;\nconst safe = value => String(value).replace(/[ ,=]/g, '_');\nmsg.method = 'POST';\nmsg.url = `${env.get('INFLUXDB_URL')}/api/v2/write?org=${encodeURIComponent(env.get('INFLUXDB_ORG'))}&bucket=${encodeURIComponent(env.get('INFLUXDB_BUCKET'))}&precision=ms`;\nmsg.headers = {Authorization: `Token ${env.get('INFLUXDB_TOKEN')}`, 'Content-Type': 'text/plain; charset=utf-8'};\nmsg.payload = `device_status,device_id=${safe(p.device_id)},patient_id=${safe(p.patient_id)} state_of_charge=${Number(p.state_of_charge)},charging=${Boolean(p.charging)} ${Number(p.timestamp)}`;\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 650,
+    "y": 560,
+    "wires": [
+      [
+        "influx-write-device"
+      ]
+    ]
+  },
+  {
+    "id": "influx-write-device",
+    "type": "http request",
+    "z": "smartback-tab",
+    "name": "INFLUXDB — salva device_status",
+    "method": "use",
+    "ret": "txt",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "insecureHTTPParser": false,
+    "authType": "",
+    "senderr": false,
+    "headers": [],
+    "x": 910,
+    "y": 560,
+    "wires": [
+      [
+        "debug-device-storage"
+      ]
+    ]
+  },
+  {
+    "id": "debug-device-storage",
+    "type": "debug",
+    "z": "smartback-tab",
+    "name": "DEBUG salvataggio device",
+    "active": false,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "statusCode",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 1170,
+    "y": 560,
+    "wires": []
+  }
+]

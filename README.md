@@ -2,7 +2,9 @@
 
 SmartBack è un prototipo IoMT per il monitoraggio posturale tramite smart t-shirt HOWDY Senior. Il sistema acquisisce e trasmette le misurazioni, le elabora nel backend e le rende disponibili attraverso dashboard e applicazione mobile.
 
-> Al momento la smart t-shirt non è disponibile: il flusso dati viene riprodotto tramite un simulatore.
+La smart t-shirt e il simulatore sono sorgenti alternative. Il simulatore e ora
+un profilo esplicito, cosi non puo contaminare per errore una sessione con il
+dispositivo reale.
 
 ## Componenti principali
 
@@ -49,6 +51,12 @@ docker compose up -d --build
 docker compose --profile mobile up -d --build mobile
 ```
 
+Per una sessione senza smart shirt, avviare anche il simulatore:
+
+```bash
+docker compose --profile simulation up -d --build simulator
+```
+
 Servizi locali principali:
 
 - API FastAPI: `http://localhost:8000`
@@ -75,5 +83,6 @@ Quando cambia la rete Wi-Fi, aggiornare `HOST_IP` in `.env`, ricreare il contain
 
 - Le notifiche push sono temporaneamente accantonate.
 - Le soglie posturali attuali sono dimostrative e dovranno essere consolidate nella documentazione tecnica e tramite fonti mediche.
+- L'architettura completa e descritta in `docs/ARCHITECTURE.md`.
+- La procedura per il primo collegamento fisico e in `docs/SMART_SHIRT_COMMISSIONING.md`.
 - La cartella `REPORT_TEMPORANEI` contiene il registro di sviluppo e dovrà essere eliminata dopo la preparazione della documentazione finale.
-

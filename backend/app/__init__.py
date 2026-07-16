@@ -1,0 +1,1 @@
+"""SmartBack FastAPI backend package."""
