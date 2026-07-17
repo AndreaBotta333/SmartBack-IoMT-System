@@ -76,8 +76,31 @@
     "y": 100,
     "wires": [
       [
-        "adapt-shirt-packet",
+        "filter-monitor-shirt",
         "debug-json-parsed"
+      ]
+    ]
+  },
+  {
+    "id": "filter-monitor-shirt",
+    "type": "function",
+    "z": "smartback-tab",
+    "name": "FILTRA — conserva solo dati utili",
+    "func": "const parts = String(msg.topic || '').split('/');\nconst packetType = parts.slice(3).join('_').toUpperCase();\nconst allowedTypes = new Set(['ACC_GYRO', 'BATTERY_INFO', 'DATALOSS', 'SYSTEM_INFO']);\nif (!allowedTypes.has(packetType)) {\n    const ignored = context.get('ignoredPackets') || {};\n    ignored[packetType || 'UNKNOWN'] = (ignored[packetType || 'UNKNOWN'] || 0) + 1;\n    context.set('ignoredPackets', ignored);\n    node.status({fill: 'grey', shape: 'ring', text: `scartati ${Object.values(ignored).reduce((a, b) => a + b, 0)}`});\n    return [null, null];\n}\n\nlet gapAlert = null;\nif (packetType === 'ACC_GYRO' && Number.isFinite(Number(msg.payload?.samplenum))) {\n    const deviceId = parts[2];\n    const patientId = env.get('SMARTSHIRT_PATIENT_ID') || 'patient-demo-001';\n    const sequence = Number(msg.payload.samplenum);\n    const lastSequences = context.get('lastAccSequences') || {};\n    const previous = lastSequences[deviceId];\n    if (Number.isFinite(previous) && sequence > previous + 1) {\n        const missing = sequence - previous - 1;\n        gapAlert = {\n            topic: 'smartback/alerts/device', qos: 1, retain: false,\n            payload: {\n                schema_version: 1, timestamp: Date.now(), device_id: deviceId, patient_id: patientId,\n                category: 'data_quality', severity: missing >= 5 ? 'critical' : 'warning',\n                code: 'ACC_SEQUENCE_GAP', message: `Mancano ${missing} pacchetti ACC tra le sequenze ${previous} e ${sequence}`,\n                active: true, previous_sequence: previous, current_sequence: sequence, missing_packets: missing,\n                source: 'nodered_ingress'\n            }\n        };\n    }\n    lastSequences[deviceId] = sequence;\n    context.set('lastAccSequences', lastSequences);\n}\n\nnode.status({fill: 'green', shape: 'dot', text: packetType});\nreturn [msg, gapAlert];",
+    "outputs": 2,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 650,
+    "y": 100,
+    "wires": [
+      [
+        "adapt-shirt-packet"
+      ],
+      [
+        "mqtt-device-alert"
       ]
     ]
   },
@@ -93,8 +116,8 @@
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 670,
-    "y": 100,
+    "x": 650,
+    "y": 170,
     "wires": [
       [
         "mqtt-shirt-raw",
@@ -106,7 +129,8 @@
       ],
       [
         "mqtt-normalized-device",
-        "debug-device-normalized"
+        "debug-device-normalized",
+        "prepare-device-influx"
       ],
       [
         "influx-write-shirt-raw"
@@ -443,43 +467,6 @@
     "wires": []
   },
   {
-    "id": "mqtt-device-persist-in",
-    "type": "mqtt in",
-    "z": "smartback-tab",
-    "name": "MQTT IN — stato device normalizzato",
-    "topic": "smartback/normalized/device",
-    "qos": "1",
-    "datatype": "auto-detect",
-    "broker": "cfg-smartback-mqtt",
-    "nl": false,
-    "rap": true,
-    "rh": 0,
-    "inputs": 0,
-    "x": 180,
-    "y": 560,
-    "wires": [
-      [
-        "json-device-persist"
-      ]
-    ]
-  },
-  {
-    "id": "json-device-persist",
-    "type": "json",
-    "z": "smartback-tab",
-    "name": "Decodifica JSON device",
-    "property": "payload",
-    "action": "obj",
-    "pretty": false,
-    "x": 420,
-    "y": 560,
-    "wires": [
-      [
-        "prepare-device-influx"
-      ]
-    ]
-  },
-  {
     "id": "prepare-device-influx",
     "type": "function",
     "z": "smartback-tab",
@@ -538,6 +525,78 @@
     "statusType": "auto",
     "x": 1170,
     "y": 560,
+    "wires": []
+  },
+  {
+    "id": "flow-errors-comment",
+    "type": "comment",
+    "z": "smartback-tab",
+    "name": "ERRORI FLOW — conversione in alert operativo",
+    "info": "Intercetta eccezioni inattese nei nodi di parsing e trasformazione senza interrompere il flusso principale.",
+    "x": 250,
+    "y": 640,
+    "wires": []
+  },
+  {
+    "id": "catch-flow-errors",
+    "type": "catch",
+    "z": "smartback-tab",
+    "name": "CATCH — errori Node-RED",
+    "scope": [
+      "json-shirt",
+      "filter-monitor-shirt",
+      "adapt-shirt-packet",
+      "json-alert",
+      "manage-alert",
+      "prepare-device-influx"
+    ],
+    "uncaught": false,
+    "x": 170,
+    "y": 690,
+    "wires": [
+      [
+        "format-flow-error"
+      ]
+    ]
+  },
+  {
+    "id": "format-flow-error",
+    "type": "function",
+    "z": "smartback-tab",
+    "name": "FORMATTA — alert errore flow",
+    "func": "const source = msg.error?.source?.name || msg.error?.source?.id || 'unknown';\nconst message = msg.error?.message || 'Errore Node-RED non specificato';\nconst alert = {\n    topic: 'smartback/alerts/device', qos: 1, retain: false,\n    payload: {\n        schema_version: 1,\n        timestamp: Date.now(),\n        device_id: msg.payload?.device_id || 'nodered',\n        patient_id: msg.payload?.patient_id || env.get('SMARTSHIRT_PATIENT_ID') || 'unknown',\n        category: 'ingestion',\n        severity: 'critical',\n        code: 'NODERED_FLOW_ERROR',\n        message: `${source}: ${message}`,\n        active: true,\n        source_node: source\n    }\n};\nreturn [alert, {...msg, payload: alert.payload}];",
+    "outputs": 2,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 430,
+    "y": 690,
+    "wires": [
+      [
+        "mqtt-device-alert"
+      ],
+      [
+        "debug-flow-error"
+      ]
+    ]
+  },
+  {
+    "id": "debug-flow-error",
+    "type": "debug",
+    "z": "smartback-tab",
+    "name": "DEBUG — errori flow",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 700,
+    "y": 710,
     "wires": []
   }
 ]

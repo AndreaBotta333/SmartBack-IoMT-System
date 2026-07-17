@@ -8,6 +8,8 @@ Smart shirt / ESP32 ─┐
 Simulatore Python ───┘                              │
                                                    ├─> WebSocket / REST -> app
                                                    └─> InfluxDB -> Grafana
+                                                                        ↑
+                                         login SmartBack (solo medico) -> gateway
 ```
 
 ## Responsabilita
@@ -19,16 +21,24 @@ Simulatore Python ───┘                              │
    `unisadiem/smartshirt/<device>/<packet-type>`.
 3. **Normalizzazione**: Node-RED valida e converte il formato specifico della
    sorgente nei topic stabili `smartback/normalized/posture` e
-   `smartback/normalized/device`. Conserva tutti i pacchetti della maglia nella
-   measurement InfluxDB `shirt_raw`.
+   `smartback/normalized/device`. Conserva nella measurement InfluxDB
+   `shirt_raw` soltanto i pacchetti utili al monitoraggio attuale o previsto:
+   accelerometro, batteria, perdita dati e stato del sistema.
 4. **Logica e archiviazione**: FastAPI valida nuovamente il contratto, calcola
    orientamento/deviazione/alert, salva le serie elaborate in InfluxDB e usa
    SQLite per utenti, sessioni e associazioni medico-paziente.
-5. **Utenti finali**: l'app usa REST e WebSocket; Grafana legge InfluxDB.
+5. **Utenti finali**: l'app usa REST e WebSocket. Grafana legge InfluxDB ed e
+   raggiungibile attraverso un gateway che accetta soltanto sessioni SmartBack
+   appartenenti a medici verificati.
 
 L'ESP32/gateway deve occuparsi di acquisizione e trasmissione. Le soglie e i
 calcoli posturali restano nel backend, così possono cambiare senza riflash del
 dispositivo.
+
+I dati `ACC_GYRO` vengono mantenuti anche in previsione della futura
+funzionalita di stima del tempo trascorso seduti. Con il solo orientamento del
+torso la distinzione seduto/in piedi richiedera una fase di calibrazione e
+validazione specifica.
 
 ## Organizzazione backend iniziale
 
@@ -37,13 +47,37 @@ backend/
 ├── app/
 │   ├── __init__.py
 │   ├── config.py           # configurazione da environment
+│   ├── database.py         # inizializzazione e migrazioni SQLite
 │   ├── device_contract.py  # schemi dei messaggi normalizzati
-│   └── main.py             # lifecycle, API, auth e orchestrazione (da separare ancora)
+│   ├── influx_manager.py   # persistenza e query delle serie temporali
+│   ├── mqtt_handler.py     # ingestion, stato realtime, watchdog e alert
+│   ├── posture_service.py  # calibrazione, smoothing e soglie pitch/roll
+│   └── main.py             # API, autenticazione e lifecycle
 └── tools/
     └── mqtt_probe.py       # osservazione del traffico per commissioning
 ```
 
-La prossima separazione naturale, dopo aver osservato i pacchetti reali, e in
-`auth.py`, `crud.py`, `database.py`, `influx_manager.py`, `mqtt_handler.py`,
-`models.py` e `schemas.py`. Non viene anticipata completamente ora per evitare
-di cristallizzare assunzioni sul protocollo della shirt prima del test reale.
+`main.py` conserva gli endpoint e l'autenticazione per mantenere compatibilita
+con l'app corrente. Calcolo posturale, MQTT, database e InfluxDB non dipendono
+piu direttamente dagli endpoint FastAPI.
+
+## Pitch e roll
+
+La calibrazione registra un riferimento indipendente per pitch e roll. Il
+motore calcola:
+
+- `pitch_deviation_deg`;
+- `roll_deviation_deg`;
+- `dominant_axis`;
+- stato separato `pitch_status` e `roll_status`.
+
+Per compatibilita, `deviation_deg` resta disponibile e contiene la deviazione
+con valore assoluto maggiore. Le soglie predefinite sono configurabili
+separatamente:
+
+```env
+MODERATE_DEVIATION_DEG=10
+MARKED_DEVIATION_DEG=20
+MODERATE_ROLL_DEG=10
+MARKED_ROLL_DEG=20
+```

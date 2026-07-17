@@ -3,47 +3,39 @@ import base64
 import binascii
 import hashlib
 import hmac
-import json
-import math
-import os
 import re
 import secrets
 import sqlite3
-import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
 
-import paho.mqtt.client as mqtt
-from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from influxdb_client import InfluxDBClient, Point, WritePrecision
-from influxdb_client.client.write_api import SYNCHRONOUS
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 from app.config import (
-    ALERT_TOPIC, AUTH_DB_PATH, DEVICE_TOPIC, INFLUX_BUCKET, INFLUX_ORG, INFLUX_TOKEN,
-    INFLUX_URL, MARKED_DEVIATION_DEG, MEDICAL_REGISTRATION_CODE,
-    MODERATE_DEVIATION_DEG, MQTT_HOST, MQTT_PORT, PERSISTENCE_SECONDS,
-    POSTURE_TOPIC,
+    ALERT_TOPIC, AUTH_DB_PATH, DATA_STALE_SECONDS, DEVICE_TOPIC, INFLUX_BUCKET,
+    INFLUX_ORG, INFLUX_TOKEN, INFLUX_URL, MARKED_DEVIATION_DEG,
+    MARKED_ROLL_DEG, MEDICAL_REGISTRATION_CODE, MODERATE_DEVIATION_DEG,
+    MODERATE_ROLL_DEG, MQTT_HOST, MQTT_PORT, PERSISTENCE_SECONDS,
+    POSTURE_EMA_ALPHA, POSTURE_HYSTERESIS_DEG, POSTURE_TOPIC,
 )
-from app.device_contract import NormalizedDeviceStatus, NormalizedPostureSample
+from app.database import init_database
+from app.influx_manager import InfluxManager
+from app.mqtt_handler import SmartBackMqttHandler
+from app.posture_service import PostureEngine, ThresholdProfile
 EMAIL_DOMAIN_PATTERN = re.compile(
     r"^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,63}$",
     re.IGNORECASE,
 )
+GRAFANA_SESSION_COOKIE = "smartback_grafana_session"
 
-state_lock = threading.Lock()
-latest_posture: dict[str, Any] | None = None
-latest_device: dict[str, Any] | None = None
-reference_pitch_by_device: dict[str, float] = {}
-deviation_started_by_device: dict[str, float] = {}
-last_alert_by_device: dict[str, str | None] = {}
 websockets: set[WebSocket] = set()
-main_loop: asyncio.AbstractEventLoop | None = None
-mqtt_client: mqtt.Client | None = None
-influx_client: InfluxDBClient | None = None
-write_api = None
+influx_manager: InfluxManager | None = None
+posture_engine: PostureEngine | None = None
+mqtt_handler: SmartBackMqttHandler | None = None
 auth_db: sqlite3.Connection | None = None
 
 
@@ -155,12 +147,16 @@ class AssociatePatientRequest(BaseModel):
 class MonitoringConfigRequest(BaseModel):
     moderate_deviation_deg: float = Field(ge=1, le=45)
     marked_deviation_deg: float = Field(ge=2, le=60)
+    moderate_roll_deg: float = Field(default=10, ge=1, le=45)
+    marked_roll_deg: float = Field(default=20, ge=2, le=60)
     persistence_seconds: float = Field(ge=1, le=300)
 
     @model_validator(mode="after")
     def validate_threshold_order(self):
         if self.marked_deviation_deg <= self.moderate_deviation_deg:
-            raise ValueError("La soglia marcata deve essere maggiore della soglia moderata")
+            raise ValueError("La soglia pitch marcata deve essere maggiore della soglia pitch moderata")
+        if self.marked_roll_deg <= self.moderate_roll_deg:
+            raise ValueError("La soglia roll marcata deve essere maggiore della soglia roll moderata")
         return self
 
 
@@ -176,75 +172,6 @@ def is_valid_fiscal_code(value: str) -> bool:
     even_values = {**{str(index): index for index in range(10)}, **{letter: index for index, letter in enumerate("ABCDEFGHIJKLMNOPQRSTUVWXYZ")}}
     total = sum(odd_values[char] if index % 2 == 0 else even_values[char] for index, char in enumerate(code[:15]))
     return code[15] == chr(ord("A") + total % 26)
-
-
-def init_auth_db() -> sqlite3.Connection:
-    os.makedirs(os.path.dirname(AUTH_DB_PATH), exist_ok=True)
-    connection = sqlite3.connect(AUTH_DB_PATH, check_same_thread=False)
-    connection.row_factory = sqlite3.Row
-    connection.executescript("""
-        CREATE TABLE IF NOT EXISTS users (
-            id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL, password_salt TEXT NOT NULL,
-            role TEXT NOT NULL CHECK(role IN ('patient', 'doctor')),
-            created_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS sessions (
-            token TEXT PRIMARY KEY, user_id TEXT NOT NULL,
-            created_at TEXT NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id)
-        );
-        CREATE TABLE IF NOT EXISTS push_tokens (
-            token TEXT PRIMARY KEY, user_id TEXT NOT NULL, updated_at TEXT NOT NULL,
-            FOREIGN KEY(user_id) REFERENCES users(id)
-        );
-        CREATE TABLE IF NOT EXISTS doctor_patients (
-            doctor_id TEXT NOT NULL, patient_id TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            PRIMARY KEY (doctor_id, patient_id),
-            FOREIGN KEY(doctor_id) REFERENCES users(id),
-            FOREIGN KEY(patient_id) REFERENCES users(id)
-        );
-        CREATE TABLE IF NOT EXISTS monitoring_configs (
-            patient_id TEXT PRIMARY KEY,
-            moderate_deviation_deg REAL NOT NULL,
-            marked_deviation_deg REAL NOT NULL,
-            persistence_seconds REAL NOT NULL,
-            updated_at TEXT NOT NULL,
-            updated_by TEXT,
-            FOREIGN KEY(patient_id) REFERENCES users(id),
-            FOREIGN KEY(updated_by) REFERENCES users(id)
-        );
-    """)
-    columns = {row[1] for row in connection.execute("PRAGMA table_info(users)").fetchall()}
-    if "patient_code" not in columns:
-        connection.execute("ALTER TABLE users ADD COLUMN patient_code TEXT")
-    for column, definition in (
-        ("first_name", "TEXT"), ("last_name", "TEXT"),
-        ("fiscal_code", "TEXT"), ("professional_verified", "INTEGER NOT NULL DEFAULT 0"),
-        ("avatar_data", "TEXT"),
-    ):
-        if column not in columns:
-            connection.execute(f"ALTER TABLE users ADD COLUMN {column} {definition}")
-    existing_users = connection.execute("SELECT id,name,first_name,last_name,role FROM users").fetchall()
-    for existing in existing_users:
-        if not existing["first_name"] or not existing["last_name"]:
-            parts = existing["name"].strip().split(maxsplit=1)
-            first_name = parts[0]
-            last_name = parts[1] if len(parts) > 1 else "Utente"
-            connection.execute(
-                "UPDATE users SET first_name=?,last_name=?,professional_verified=? WHERE id=?",
-                (first_name, last_name, 1 if existing["role"] == "doctor" else 0, existing["id"]),
-            )
-    connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_fiscal_code ON users(fiscal_code) WHERE fiscal_code IS NOT NULL")
-    patients = connection.execute(
-        "SELECT id, patient_code FROM users WHERE role='patient' ORDER BY created_at"
-    ).fetchall()
-    for index, patient in enumerate(patients):
-        if not patient["patient_code"]:
-            code = "patient-demo-001" if index == 0 else f"patient-{patient['id'].removeprefix('usr_')}"
-            connection.execute("UPDATE users SET patient_code=? WHERE id=?", (code, patient["id"]))
-    connection.commit()
-    return connection
 
 
 def hash_password(password: str, salt: bytes | None = None) -> tuple[str, str]:
@@ -273,42 +200,76 @@ def create_session(user_id: str) -> str:
     return token
 
 
+def user_for_session(token: str) -> sqlite3.Row | None:
+    return auth_db.execute(
+        "SELECT users.* FROM sessions JOIN users ON users.id=sessions.user_id WHERE sessions.token=?",
+        (token,),
+    ).fetchone()
+
+
+def authenticate_user(email: str, password: str) -> sqlite3.Row:
+    user = auth_db.execute(
+        "SELECT * FROM users WHERE email=?",
+        (email.lower().strip(),),
+    ).fetchone()
+    if user is None:
+        raise HTTPException(status_code=401, detail="Email o password non corrette")
+    digest, _ = hash_password(password, bytes.fromhex(user["password_salt"]))
+    if not hmac.compare_digest(digest, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Email o password non corrette")
+    return user
+
+
 def current_user(authorization: str | None = Header(default=None)) -> sqlite3.Row:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Autenticazione richiesta")
     token = authorization.removeprefix("Bearer ").strip()
-    row = auth_db.execute(
-        "SELECT users.* FROM sessions JOIN users ON users.id=sessions.user_id WHERE sessions.token=?",
-        (token,),
-    ).fetchone()
+    row = user_for_session(token)
     if row is None:
         raise HTTPException(status_code=401, detail="Sessione non valida")
     return row
 
 
-def monitoring_config_for_patient(patient: sqlite3.Row) -> dict[str, float]:
+def threshold_profile_for_patient(patient: sqlite3.Row | None) -> ThresholdProfile:
+    if patient is None:
+        return ThresholdProfile(
+            pitch_moderate_deg=MODERATE_DEVIATION_DEG,
+            pitch_marked_deg=MARKED_DEVIATION_DEG,
+            roll_moderate_deg=MODERATE_ROLL_DEG,
+            roll_marked_deg=MARKED_ROLL_DEG,
+            persistence_seconds=PERSISTENCE_SECONDS,
+        )
     row = auth_db.execute(
-        "SELECT moderate_deviation_deg,marked_deviation_deg,persistence_seconds FROM monitoring_configs WHERE patient_id=?",
+        "SELECT moderate_deviation_deg,marked_deviation_deg,moderate_roll_deg,marked_roll_deg,persistence_seconds "
+        "FROM monitoring_configs WHERE patient_id=?",
         (patient["id"],),
     ).fetchone()
-    return {
-        "moderate_deviation_deg": float(row["moderate_deviation_deg"]) if row else MODERATE_DEVIATION_DEG,
-        "marked_deviation_deg": float(row["marked_deviation_deg"]) if row else MARKED_DEVIATION_DEG,
-        "persistence_seconds": float(row["persistence_seconds"]) if row else PERSISTENCE_SECONDS,
-    }
+    return ThresholdProfile(
+        pitch_moderate_deg=float(row["moderate_deviation_deg"]) if row else MODERATE_DEVIATION_DEG,
+        pitch_marked_deg=float(row["marked_deviation_deg"]) if row else MARKED_DEVIATION_DEG,
+        roll_moderate_deg=(
+            float(row["moderate_roll_deg"])
+            if row and row["moderate_roll_deg"] is not None
+            else MODERATE_ROLL_DEG
+        ),
+        roll_marked_deg=(
+            float(row["marked_roll_deg"])
+            if row and row["marked_roll_deg"] is not None
+            else MARKED_ROLL_DEG
+        ),
+        persistence_seconds=float(row["persistence_seconds"]) if row else PERSISTENCE_SECONDS,
+    )
 
 
-def monitoring_config_for_patient_code(patient_code: str) -> dict[str, float]:
+def monitoring_config_for_patient(patient: sqlite3.Row) -> dict[str, float]:
+    return threshold_profile_for_patient(patient).as_dict()
+
+
+def threshold_profile_for_patient_code(patient_code: str) -> ThresholdProfile:
     patient = auth_db.execute(
         "SELECT * FROM users WHERE patient_code=? AND role='patient'", (patient_code,)
     ).fetchone()
-    if patient is None:
-        return {
-            "moderate_deviation_deg": MODERATE_DEVIATION_DEG,
-            "marked_deviation_deg": MARKED_DEVIATION_DEG,
-            "persistence_seconds": PERSISTENCE_SECONDS,
-        }
-    return monitoring_config_for_patient(patient)
+    return threshold_profile_for_patient(patient)
 
 
 def accessible_patient(user: sqlite3.Row, patient_id: str | None = None) -> sqlite3.Row:
@@ -329,77 +290,6 @@ def accessible_patient(user: sqlite3.Row, patient_id: str | None = None) -> sqli
     return patient
 
 
-def vector_pitch(x: float, y: float, z: float) -> float:
-    return math.degrees(math.atan2(y, math.sqrt(x * x + z * z)))
-
-
-def vector_roll(x: float, y: float, z: float) -> float:
-    return math.degrees(math.atan2(x, math.sqrt(y * y + z * z)))
-
-
-def process_posture(payload: dict[str, Any]) -> dict[str, Any]:
-    device_id = payload["device_id"]
-    pitch = vector_pitch(float(payload["x"]), float(payload["y"]), float(payload["z"]))
-    roll = vector_roll(float(payload["x"]), float(payload["y"]), float(payload["z"]))
-    timestamp_ms = int(payload["timestamp"])
-    config = monitoring_config_for_patient_code(str(payload["patient_id"]))
-    moderate_deviation_deg = config["moderate_deviation_deg"]
-    marked_deviation_deg = config["marked_deviation_deg"]
-    persistence_seconds = config["persistence_seconds"]
-
-    with state_lock:
-        if device_id not in reference_pitch_by_device:
-            reference_pitch_by_device[device_id] = pitch
-        reference = reference_pitch_by_device[device_id]
-        deviation = pitch - reference
-
-        if abs(deviation) >= moderate_deviation_deg:
-            deviation_started_by_device.setdefault(device_id, timestamp_ms / 1000)
-        else:
-            deviation_started_by_device.pop(device_id, None)
-        started = deviation_started_by_device.get(device_id)
-        duration = max(0.0, timestamp_ms / 1000 - started) if started else 0.0
-
-    if abs(deviation) >= marked_deviation_deg and duration >= persistence_seconds:
-        status, alert = "marked_deviation", "POSTURE_MARKED_DEVIATION"
-    elif abs(deviation) >= moderate_deviation_deg and duration >= persistence_seconds:
-        status, alert = "prolonged_deviation", "POSTURE_PROLONGED_DEVIATION"
-    elif abs(deviation) >= moderate_deviation_deg:
-        status, alert = "deviated", None
-    else:
-        status, alert = "neutral", None
-
-    return {
-        **payload,
-        "pitch_deg": round(pitch, 2),
-        "roll_deg": round(roll, 2),
-        "reference_pitch_deg": round(reference, 2),
-        "deviation_deg": round(deviation, 2),
-        "deviation_duration_seconds": round(duration, 1),
-        "posture_status": status,
-        "alert": alert,
-        "threshold_profile": f"patient:{payload['patient_id']}",
-    }
-
-
-def persist_posture(sample: dict[str, Any]) -> None:
-    if write_api is None:
-        return
-    point = (
-        Point("posture")
-        .tag("device_id", sample["device_id"])
-        .tag("patient_id", sample["patient_id"])
-        .tag("status", sample["posture_status"])
-        .field("pitch_deg", sample["pitch_deg"])
-        .field("roll_deg", sample["roll_deg"])
-        .field("deviation_deg", sample["deviation_deg"])
-        .field("deviation_duration_seconds", sample["deviation_duration_seconds"])
-        .field("alert_active", bool(sample["alert"]))
-        .time(int(sample["timestamp"]), WritePrecision.MS)
-    )
-    write_api.write(bucket=INFLUX_BUCKET, org=INFLUX_ORG, record=point)
-
-
 async def broadcast(payload: dict[str, Any]) -> None:
     stale = []
     for socket in list(websockets):
@@ -411,80 +301,37 @@ async def broadcast(payload: dict[str, Any]) -> None:
         websockets.discard(socket)
 
 
-def on_connect(client: mqtt.Client, userdata: Any, flags: Any, reason_code: Any, properties: Any) -> None:
-    if reason_code == 0:
-        client.subscribe([(POSTURE_TOPIC, 1), (DEVICE_TOPIC, 1)])
-        print(f"MQTT connected; subscribed to {POSTURE_TOPIC} and {DEVICE_TOPIC}", flush=True)
-    else:
-        print(f"MQTT connection failed: {reason_code}", flush=True)
-
-
-def on_message(client: mqtt.Client, userdata: Any, message: mqtt.MQTTMessage) -> None:
-    global latest_posture, latest_device
-    try:
-        raw_payload = json.loads(message.payload.decode("utf-8"))
-        if message.topic == POSTURE_TOPIC:
-            payload = NormalizedPostureSample.model_validate(raw_payload).model_dump()
-            processed = process_posture(payload)
-            persist_posture(processed)
-            previous_alert = last_alert_by_device.get(processed["device_id"])
-            current_alert = processed["alert"]
-            if current_alert != previous_alert:
-                alert_payload = {
-                    "schema_version": 1,
-                    "timestamp": int(processed["timestamp"]),
-                    "device_id": processed["device_id"],
-                    "patient_id": processed["patient_id"],
-                    "category": "posture",
-                    "severity": "critical" if current_alert == "POSTURE_MARKED_DEVIATION" else "warning",
-                    "code": current_alert or previous_alert or "POSTURE_OK",
-                    "message": (
-                        "Deviazione posturale marcata"
-                        if current_alert == "POSTURE_MARKED_DEVIATION"
-                        else "Deviazione posturale prolungata"
-                        if current_alert == "POSTURE_PROLONGED_DEVIATION"
-                        else "Postura rientrata nei limiti"
-                    ),
-                    "active": current_alert is not None,
-                    "deviation_deg": processed["deviation_deg"],
-                    "duration_seconds": processed["deviation_duration_seconds"],
-                }
-                client.publish(ALERT_TOPIC, json.dumps(alert_payload), qos=1)
-                last_alert_by_device[processed["device_id"]] = current_alert
-            with state_lock:
-                latest_posture = processed
-            if main_loop:
-                asyncio.run_coroutine_threadsafe(broadcast(processed), main_loop)
-        elif message.topic == DEVICE_TOPIC:
-            payload = NormalizedDeviceStatus.model_validate(raw_payload).model_dump()
-            with state_lock:
-                latest_device = payload
-    except Exception as exc:
-        print(f"Cannot process MQTT message from {message.topic}: {exc}", flush=True)
-
-
-def start_mqtt() -> mqtt.Client:
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="smartback-backend")
-    client.on_connect = on_connect
-    client.on_message = on_message
-    client.reconnect_delay_set(min_delay=1, max_delay=10)
-    client.connect_async(MQTT_HOST, MQTT_PORT, keepalive=60)
-    client.loop_start()
-    return client
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global main_loop, mqtt_client, influx_client, write_api, auth_db
-    main_loop = asyncio.get_running_loop()
-    auth_db = init_auth_db()
-    influx_client = InfluxDBClient(url=INFLUX_URL, token=INFLUX_TOKEN, org=INFLUX_ORG)
-    write_api = influx_client.write_api(write_options=SYNCHRONOUS)
-    mqtt_client = start_mqtt()
+    global mqtt_handler, influx_manager, posture_engine, auth_db
+    loop = asyncio.get_running_loop()
+    auth_db = init_database(AUTH_DB_PATH)
+    influx_manager = InfluxManager(
+        url=INFLUX_URL,
+        token=INFLUX_TOKEN,
+        org=INFLUX_ORG,
+        bucket=INFLUX_BUCKET,
+    )
+    posture_engine = PostureEngine(
+        threshold_profile_for_patient_code,
+        ema_alpha=POSTURE_EMA_ALPHA,
+        hysteresis_deg=POSTURE_HYSTERESIS_DEG,
+    )
+    mqtt_handler = SmartBackMqttHandler(
+        host=MQTT_HOST,
+        port=MQTT_PORT,
+        posture_topic=POSTURE_TOPIC,
+        device_topic=DEVICE_TOPIC,
+        alert_topic=ALERT_TOPIC,
+        stale_seconds=DATA_STALE_SECONDS,
+        posture_engine=posture_engine,
+        influx=influx_manager,
+        broadcast=broadcast,
+    )
+    mqtt_handler.start(loop)
     yield
-    mqtt_client.loop_stop()
-    mqtt_client.disconnect()
-    influx_client.close()
+    await mqtt_handler.stop()
+    influx_manager.close()
     auth_db.close()
 
 
@@ -530,13 +377,109 @@ def register(body: RegisterRequest):
 
 @app.post("/api/v1/auth/login")
 def login(body: LoginRequest):
-    user = auth_db.execute("SELECT * FROM users WHERE email=?", (body.email.lower().strip(),)).fetchone()
-    if user is None:
-        raise HTTPException(status_code=401, detail="Email o password non corrette")
-    digest, _ = hash_password(body.password, bytes.fromhex(user["password_salt"]))
-    if not hmac.compare_digest(digest, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Email o password non corrette")
+    user = authenticate_user(str(body.email), body.password)
     return {"access_token": create_session(user["id"]), "user": public_user(user)}
+
+
+@app.get("/grafana-login", response_class=HTMLResponse)
+def grafana_login_page():
+    return """
+    <main style="max-width:420px;margin:8vh auto;padding:24px;font-family:system-ui,sans-serif">
+      <h1 style="font-size:24px">SmartBack · Accesso medico</h1>
+      <p>Accedi con le credenziali SmartBack verificate per il ruolo medico.</p>
+      <form id="login" style="display:grid;gap:14px">
+        <label>Email <input id="email" type="email" required
+          style="display:block;width:100%;box-sizing:border-box;padding:10px;margin-top:5px"></label>
+        <label>Password <input id="password" type="password" required
+          style="display:block;width:100%;box-sizing:border-box;padding:10px;margin-top:5px"></label>
+        <button type="submit" style="padding:11px;cursor:pointer">Accedi alla dashboard</button>
+        <p id="error" role="alert" style="color:#b42318;min-height:1.4em"></p>
+      </form>
+      <script>
+        document.getElementById("login").addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const error = document.getElementById("error");
+          error.textContent = "";
+          const response = await fetch("/api/v1/grafana/login", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+              email: document.getElementById("email").value,
+              password: document.getElementById("password").value
+            })
+          });
+          if (response.ok) {
+            window.location.assign("/grafana/");
+            return;
+          }
+          const body = await response.json().catch(() => ({}));
+          error.textContent = body.detail || "Accesso non riuscito";
+        });
+      </script>
+    </main>
+    """
+
+
+@app.post("/api/v1/grafana/login")
+def grafana_login(body: LoginRequest, response: Response):
+    user = authenticate_user(str(body.email), body.password)
+    if user["role"] != "doctor" or not bool(user["professional_verified"]):
+        raise HTTPException(status_code=403, detail="Accesso riservato ai medici verificati")
+    token = create_session(user["id"])
+    response.set_cookie(
+        GRAFANA_SESSION_COOKIE,
+        token,
+        max_age=8 * 60 * 60,
+        httponly=True,
+        samesite="lax",
+        secure=False,
+        path="/",
+    )
+    return {"status": "ok", "redirect": "/grafana/"}
+
+
+@app.get("/api/v1/grafana/auth")
+def grafana_auth(
+    smartback_grafana_session: str | None = Cookie(default=None),
+):
+    if not smartback_grafana_session:
+        raise HTTPException(status_code=401, detail="Sessione Grafana richiesta")
+    user = user_for_session(smartback_grafana_session)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sessione Grafana non valida")
+    if user["role"] != "doctor" or not bool(user["professional_verified"]):
+        raise HTTPException(status_code=403, detail="Accesso riservato ai medici verificati")
+    return Response(
+        status_code=200,
+        headers={
+            "X-WEBAUTH-USER": user["email"],
+            "X-WEBAUTH-NAME": user["name"],
+            "X-WEBAUTH-ROLE": "Viewer",
+        },
+    )
+
+
+@app.post("/api/v1/grafana/logout", status_code=204)
+def grafana_logout(
+    response: Response,
+    smartback_grafana_session: str | None = Cookie(default=None),
+):
+    if smartback_grafana_session:
+        auth_db.execute("DELETE FROM sessions WHERE token=?", (smartback_grafana_session,))
+        auth_db.commit()
+    response.delete_cookie(GRAFANA_SESSION_COOKIE, path="/")
+
+
+@app.get("/grafana-logout")
+def grafana_browser_logout(
+    smartback_grafana_session: str | None = Cookie(default=None),
+):
+    if smartback_grafana_session:
+        auth_db.execute("DELETE FROM sessions WHERE token=?", (smartback_grafana_session,))
+        auth_db.commit()
+    response = RedirectResponse(url="/grafana-login", status_code=303)
+    response.delete_cookie(GRAFANA_SESSION_COOKIE, path="/")
+    return response
 
 
 @app.get("/api/v1/auth/me")
@@ -582,6 +525,7 @@ def doctor_patients(user: sqlite3.Row = Depends(current_user)):
         "WHERE links.doctor_id=? ORDER BY patients.name COLLATE NOCASE",
         (user["id"],),
     ).fetchall()
+    latest_posture = mqtt_handler.latest_posture if mqtt_handler else None
     current_patient_code = latest_posture.get("patient_id") if latest_posture else None
     return {"items": [{
         **public_user(row), "associated_at": row["associated_at"],
@@ -607,17 +551,20 @@ def associate_patient(body: AssociatePatientRequest, user: sqlite3.Row = Depends
     except sqlite3.IntegrityError:
         auth_db.rollback()
         raise HTTPException(status_code=409, detail="Paziente già associato") from None
-    return {**public_user(patient), "has_live_data": bool(latest_posture and patient["patient_code"] == latest_posture.get("patient_id"))}
+    latest_posture = mqtt_handler.latest_posture if mqtt_handler else None
+    return {
+        **public_user(patient),
+        "has_live_data": bool(
+            latest_posture and patient["patient_code"] == latest_posture.get("patient_id")
+        ),
+    }
 
 
 @app.get("/health")
 def health():
-    mqtt_connected = bool(mqtt_client and mqtt_client.is_connected())
-    influx_ready = False
-    try:
-        influx_ready = bool(influx_client and influx_client.health().status == "pass")
-    except Exception:
-        pass
+    mqtt_connected = bool(mqtt_handler and mqtt_handler.connected)
+    influx_ready = bool(influx_manager and influx_manager.is_ready())
+    latest_posture = mqtt_handler.latest_posture if mqtt_handler else None
     return {
         "status": "ok" if mqtt_connected and influx_ready else "degraded",
         "mqtt": mqtt_connected,
@@ -629,63 +576,42 @@ def health():
 
 @app.get("/api/v1/posture/latest")
 def get_latest_posture():
-    with state_lock:
-        if latest_posture is None:
-            raise HTTPException(status_code=404, detail="Nessun campione posturale ancora ricevuto")
-        return latest_posture
+    latest = mqtt_handler.latest_posture if mqtt_handler else None
+    if latest is None:
+        raise HTTPException(status_code=404, detail="Nessun campione posturale ancora ricevuto")
+    return latest
 
 
 @app.get("/api/v1/device/latest")
 def get_latest_device():
-    with state_lock:
-        if latest_device is None:
-            raise HTTPException(status_code=404, detail="Nessuno stato del dispositivo ancora ricevuto")
-        return latest_device
+    latest = mqtt_handler.latest_device if mqtt_handler else None
+    if latest is None:
+        raise HTTPException(status_code=404, detail="Nessuno stato del dispositivo ancora ricevuto")
+    return latest
 
 
 @app.post("/api/v1/devices/{device_id}/calibration")
 def calibrate(device_id: str):
-    with state_lock:
-        if latest_posture is None or latest_posture.get("device_id") != device_id:
-            raise HTTPException(status_code=409, detail="Nessun campione corrente disponibile per questo dispositivo")
-        reference_pitch_by_device[device_id] = float(latest_posture["pitch_deg"])
-        deviation_started_by_device.pop(device_id, None)
-        return {"device_id": device_id, "reference_pitch_deg": reference_pitch_by_device[device_id]}
+    if mqtt_handler is None:
+        raise HTTPException(status_code=503, detail="Motore posturale non disponibile")
+    try:
+        return mqtt_handler.calibrate(device_id)
+    except LookupError:
+        raise HTTPException(
+            status_code=409,
+            detail="Nessun campione corrente disponibile per questo dispositivo",
+        ) from None
 
 
 def query_posture_history(patient_code: str, minutes: int, limit: int = 600) -> list[dict[str, Any]]:
-    minutes = min(max(minutes, 1), 10080)
-    limit = min(max(limit, 1), 1200)
-    window_seconds = max(1, math.ceil(minutes * 60 / 240))
-    config = monitoring_config_for_patient_code(patient_code)
-    query = f'''from(bucket: "{INFLUX_BUCKET}")
-      |> range(start: -{minutes}m)
-      |> filter(fn: (r) => r._measurement == "posture")
-      |> filter(fn: (r) => r._field == "deviation_deg")
-      |> filter(fn: (r) => r.patient_id == "{patient_code}")
-      |> group(columns: ["patient_id"])
-      |> aggregateWindow(every: {window_seconds}s, fn: mean, createEmpty: false)
-      |> sort(columns: ["_time"])
-      |> limit(n: {limit})'''
-    tables = influx_client.query_api().query(query=query, org=INFLUX_ORG)
-    rows: list[dict[str, Any]] = []
-    for table in tables:
-        for record in table.records:
-            deviation = round(float(record.get_value()), 2)
-            if abs(deviation) >= config["marked_deviation_deg"]:
-                status = "marked_deviation"
-            elif abs(deviation) >= config["moderate_deviation_deg"]:
-                status = "deviated"
-            else:
-                status = "neutral"
-            rows.append({
-                "timestamp": record.get_time().isoformat(),
-                "deviation_deg": deviation,
-                "posture_status": status,
-                "is_incorrect": status != "neutral",
-            })
-    rows.sort(key=lambda item: item["timestamp"])
-    return rows[-limit:]
+    if influx_manager is None:
+        raise HTTPException(status_code=503, detail="Archivio temporale non disponibile")
+    return influx_manager.query_posture_history(
+        patient_code,
+        minutes,
+        threshold_profile_for_patient_code(patient_code),
+        limit,
+    )
 
 
 @app.get("/api/v1/posture/history")
@@ -735,14 +661,26 @@ def update_monitoring_config(
         raise HTTPException(status_code=403, detail="Accesso riservato al medico")
     patient = accessible_patient(user, patient_id)
     auth_db.execute(
-        "INSERT INTO monitoring_configs(patient_id,moderate_deviation_deg,marked_deviation_deg,persistence_seconds,updated_at,updated_by) "
-        "VALUES (?,?,?,?,?,?) ON CONFLICT(patient_id) DO UPDATE SET "
+        "INSERT INTO monitoring_configs("
+        "patient_id,moderate_deviation_deg,marked_deviation_deg,moderate_roll_deg,marked_roll_deg,"
+        "persistence_seconds,updated_at,updated_by) "
+        "VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(patient_id) DO UPDATE SET "
         "moderate_deviation_deg=excluded.moderate_deviation_deg,"
         "marked_deviation_deg=excluded.marked_deviation_deg,"
+        "moderate_roll_deg=excluded.moderate_roll_deg,"
+        "marked_roll_deg=excluded.marked_roll_deg,"
         "persistence_seconds=excluded.persistence_seconds,"
         "updated_at=excluded.updated_at,updated_by=excluded.updated_by",
-        (patient["id"], body.moderate_deviation_deg, body.marked_deviation_deg, body.persistence_seconds,
-         datetime.now(timezone.utc).isoformat(), user["id"]),
+        (
+            patient["id"],
+            body.moderate_deviation_deg,
+            body.marked_deviation_deg,
+            body.moderate_roll_deg,
+            body.marked_roll_deg,
+            body.persistence_seconds,
+            datetime.now(timezone.utc).isoformat(),
+            user["id"],
+        ),
     )
     auth_db.commit()
     return monitoring_config_for_patient(patient)
@@ -763,8 +701,9 @@ async def wearable_stream(websocket: WebSocket):
     await websocket.accept()
     websockets.add(websocket)
     try:
-        if latest_posture:
-            await websocket.send_json(latest_posture)
+        latest = mqtt_handler.latest_posture if mqtt_handler else None
+        if latest:
+            await websocket.send_json(latest)
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:

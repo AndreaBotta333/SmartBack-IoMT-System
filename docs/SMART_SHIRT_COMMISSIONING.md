@@ -61,10 +61,21 @@ lo normalizza e pubblica il risultato su `smartback/normalized/posture`. Il
 timestamp usato dal backend e quello di ricezione del server; il timestamp
 originario della maglia viene conservato come `source_timestamp`.
 
-`BATTERY_INFO` viene convertito in `smartback/normalized/device`. Tutti gli
-altri tipi (`ECG`, `R2R`, `BREATH_WAVEFORM`, `TEMPERATURE`, ecc.) vengono
-comunque ricevuti, archiviati in InfluxDB nella measurement `shirt_raw` e
-ripubblicati su:
+`BATTERY_INFO` viene convertito in `smartback/normalized/device`. Node-RED
+conserva e archivia soltanto:
+
+- `ACC_GYRO`;
+- `BATTERY_INFO`;
+- `DATALOSS`;
+- `SYSTEM_INFO`.
+
+ECG, R2R, respirazione, temperatura, strain gauges e diagnostica non necessaria
+vengono scartati all'ingresso. Accelerometro e orientamento restano disponibili
+anche per la futura stima del tempo trascorso seduti. `BABY_ORIENTATION` viene
+scartato perché nelle prove è rimasto costante e duplica il campo orientation
+già presente in `ACC_GYRO`.
+
+I pacchetti conservati vengono ripubblicati su:
 
 ```text
 smartback/shirt/raw/<device>/<tipo>
@@ -118,9 +129,38 @@ FastAPI genera gli alert posturali solo dopo il tempo di persistenza configurato
 - `POSTURE_MARKED_DEVIATION`;
 - evento con `active=false` quando la postura rientra.
 
+Il backend applica un filtro EMA al pitch e al roll (`POSTURE_EMA_ALPHA=0.25`)
+e un'isteresi predefinita di 2 gradi. Per esempio, una deviazione entra nella
+fascia moderata a 10 gradi ma ne esce soltanto quando rientra sotto 8 gradi.
+Questo evita oscillazioni rapide degli alert vicino alle soglie.
+
+Se dopo un primo campione non arrivano nuovi dati `ACC_GYRO` per
+`DATA_STALE_SECONDS` (10 secondi per impostazione predefinita), il backend
+pubblica `DATA_STREAM_STALE`. Alla ripresa pubblica `DATA_STREAM_RESTORED`.
+
+La calibrazione imposta contemporaneamente il riferimento di pitch e roll:
+
+```json
+{
+  "device_id": "tshirt002",
+  "reference_pitch_deg": 76.4,
+  "reference_roll_deg": 1.2
+}
+```
+
+Le soglie pitch usano i campi storici `moderate_deviation_deg` e
+`marked_deviation_deg` per compatibilita con l'app. Le soglie roll sono
+`moderate_roll_deg` e `marked_roll_deg`.
+
 Gli alert transitano su `smartback/alerts/device` e
 `smartback/alerts/posture`, vengono mostrati dal nodo
 `DEBUG ALERT ATTIVI/RISOLTI` e salvati nella measurement InfluxDB `alerts`.
+
+Node-RED confronta inoltre il numero progressivo `samplenum` dei pacchetti
+`ACC_GYRO`. Un salto genera `ACC_SEQUENCE_GAP` già all'ingresso. Se il salto è
+visibile anche nell'output Thonny, la perdita è avvenuta prima della
+pubblicazione MQTT; se Thonny mostra sequenze complete ma Node-RED rileva un
+salto, la perdita è nel tratto ESP32 -> broker.
 
 Per tornare al simulatore, avviare esplicitamente il profilo:
 

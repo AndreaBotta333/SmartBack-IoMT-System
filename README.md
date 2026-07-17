@@ -61,7 +61,7 @@ Servizi locali principali:
 
 - API FastAPI: `http://localhost:8000`
 - Node-RED: `http://localhost:1880`
-- Grafana: `http://localhost:3000`
+- Grafana medico: `http://localhost:3000` (credenziali SmartBack con ruolo medico)
 - InfluxDB: `http://localhost:8086`
 
 ## Avvio manuale dell'app mobile
@@ -85,4 +85,10 @@ Quando cambia la rete Wi-Fi, aggiornare `HOST_IP` in `.env`, ricreare il contain
 - Le soglie posturali attuali sono dimostrative e dovranno essere consolidate nella documentazione tecnica e tramite fonti mediche.
 - L'architettura completa e descritta in `docs/ARCHITECTURE.md`.
 - La procedura per il primo collegamento fisico e in `docs/SMART_SHIRT_COMMISSIONING.md`.
+- Il backend applica soglie indipendenti per inclinazione pitch e roll.
+- Grafana separa angoli, deviazioni, batteria, qualità del flusso e alert.
+- Grafana e una vista medica in sola lettura, accessibile soltanto a utenti
+  SmartBack verificati con ruolo `doctor`.
+- La configurazione dell'accesso medico e descritta in
+  `docs/GRAFANA_MEDICAL_ACCESS.md`.
 - La cartella `REPORT_TEMPORANEI` contiene il registro di sviluppo e dovrà essere eliminata dopo la preparazione della documentazione finale.

@@ -1,0 +1,239 @@
+"""MQTT ingestion, realtime state, alert publication and stream watchdog."""
+
+import asyncio
+import json
+import threading
+import time
+from datetime import datetime, timezone
+from typing import Any, Awaitable, Callable
+
+import paho.mqtt.client as mqtt
+
+from app.device_contract import NormalizedDeviceStatus, NormalizedPostureSample
+from app.influx_manager import InfluxManager
+from app.posture_service import PostureEngine
+
+
+BroadcastCallback = Callable[[dict[str, Any]], Awaitable[None]]
+
+
+class SmartBackMqttHandler:
+    def __init__(
+        self,
+        *,
+        host: str,
+        port: int,
+        posture_topic: str,
+        device_topic: str,
+        alert_topic: str,
+        stale_seconds: float,
+        posture_engine: PostureEngine,
+        influx: InfluxManager,
+        broadcast: BroadcastCallback,
+    ) -> None:
+        self.host = host
+        self.port = port
+        self.posture_topic = posture_topic
+        self.device_topic = device_topic
+        self.alert_topic = alert_topic
+        self.stale_seconds = stale_seconds
+        self.posture_engine = posture_engine
+        self.influx = influx
+        self.broadcast = broadcast
+
+        self._lock = threading.RLock()
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._watchdog_task: asyncio.Task | None = None
+        self._client: mqtt.Client | None = None
+        self._latest_posture: dict[str, Any] | None = None
+        self._latest_device: dict[str, Any] | None = None
+        self._last_posture_alert: dict[str, str | None] = {}
+        self._last_sample_monotonic: dict[str, float] = {}
+        self._device_patient: dict[str, str] = {}
+        self._stale_alerted: set[str] = set()
+
+    @property
+    def latest_posture(self) -> dict[str, Any] | None:
+        with self._lock:
+            return dict(self._latest_posture) if self._latest_posture else None
+
+    @property
+    def latest_device(self) -> dict[str, Any] | None:
+        with self._lock:
+            return dict(self._latest_device) if self._latest_device else None
+
+    @property
+    def connected(self) -> bool:
+        return bool(self._client and self._client.is_connected())
+
+    def start(self, loop: asyncio.AbstractEventLoop) -> None:
+        self._loop = loop
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="smartback-backend")
+        client.on_connect = self._on_connect
+        client.on_message = self._on_message
+        client.reconnect_delay_set(min_delay=1, max_delay=10)
+        client.connect_async(self.host, self.port, keepalive=60)
+        client.loop_start()
+        self._client = client
+        self._watchdog_task = loop.create_task(self._monitor_data_stream())
+
+    async def stop(self) -> None:
+        if self._watchdog_task:
+            self._watchdog_task.cancel()
+            try:
+                await self._watchdog_task
+            except asyncio.CancelledError:
+                pass
+        if self._client:
+            self._client.loop_stop()
+            self._client.disconnect()
+
+    def calibrate(self, device_id: str) -> dict[str, float | str]:
+        sample = self.latest_posture
+        if sample is None or sample.get("device_id") != device_id:
+            raise LookupError("No current sample is available for this device")
+        return self.posture_engine.calibrate(device_id, sample)
+
+    def _on_connect(
+        self,
+        client: mqtt.Client,
+        userdata: Any,
+        flags: Any,
+        reason_code: Any,
+        properties: Any,
+    ) -> None:
+        if reason_code == 0:
+            client.subscribe([(self.posture_topic, 1), (self.device_topic, 1)])
+            print(
+                f"MQTT connected; subscribed to {self.posture_topic} and {self.device_topic}",
+                flush=True,
+            )
+        else:
+            print(f"MQTT connection failed: {reason_code}", flush=True)
+
+    def _on_message(self, client: mqtt.Client, userdata: Any, message: mqtt.MQTTMessage) -> None:
+        try:
+            raw_payload = json.loads(message.payload.decode("utf-8"))
+            if message.topic == self.posture_topic:
+                payload = NormalizedPostureSample.model_validate(raw_payload).model_dump()
+                self._mark_stream_active(client, payload)
+                processed = self.posture_engine.process(payload)
+                self.influx.persist_posture(processed)
+                self._publish_posture_transition(client, processed)
+                with self._lock:
+                    self._latest_posture = processed
+                if self._loop:
+                    asyncio.run_coroutine_threadsafe(self.broadcast(processed), self._loop)
+            elif message.topic == self.device_topic:
+                payload = NormalizedDeviceStatus.model_validate(raw_payload).model_dump()
+                with self._lock:
+                    self._latest_device = payload
+        except Exception as exc:
+            print(f"Cannot process MQTT message from {message.topic}: {exc}", flush=True)
+
+    def _mark_stream_active(self, client: mqtt.Client, payload: dict[str, Any]) -> None:
+        device_id = str(payload["device_id"])
+        patient_id = str(payload["patient_id"])
+        recovery_silence: float | None = None
+        with self._lock:
+            now = time.monotonic()
+            previous_seen = self._last_sample_monotonic.get(device_id, now)
+            self._last_sample_monotonic[device_id] = now
+            self._device_patient[device_id] = patient_id
+            if device_id in self._stale_alerted:
+                self._stale_alerted.discard(device_id)
+                recovery_silence = now - previous_seen
+        if recovery_silence is not None:
+            self._publish_stream_alert(
+                client,
+                device_id=device_id,
+                patient_id=patient_id,
+                active=False,
+                silent_seconds=recovery_silence,
+            )
+
+    def _publish_posture_transition(
+        self,
+        client: mqtt.Client,
+        processed: dict[str, Any],
+    ) -> None:
+        device_id = str(processed["device_id"])
+        current_alert = processed["alert"]
+        previous_alert = self._last_posture_alert.get(device_id)
+        if current_alert == previous_alert:
+            return
+        payload = {
+            "schema_version": 1,
+            "timestamp": int(processed["timestamp"]),
+            "device_id": device_id,
+            "patient_id": processed["patient_id"],
+            "category": "posture",
+            "severity": "critical" if current_alert == "POSTURE_MARKED_DEVIATION" else "warning",
+            "code": current_alert or previous_alert or "POSTURE_OK",
+            "message": (
+                "Deviazione posturale marcata"
+                if current_alert == "POSTURE_MARKED_DEVIATION"
+                else "Deviazione posturale prolungata"
+                if current_alert == "POSTURE_PROLONGED_DEVIATION"
+                else "Postura rientrata nei limiti"
+            ),
+            "active": current_alert is not None,
+            "deviation_deg": processed["deviation_deg"],
+            "pitch_deviation_deg": processed["pitch_deviation_deg"],
+            "roll_deviation_deg": processed["roll_deviation_deg"],
+            "dominant_axis": processed["dominant_axis"],
+            "duration_seconds": processed["deviation_duration_seconds"],
+        }
+        client.publish(self.alert_topic, json.dumps(payload), qos=1)
+        self._last_posture_alert[device_id] = current_alert
+
+    def _publish_stream_alert(
+        self,
+        client: mqtt.Client,
+        *,
+        device_id: str,
+        patient_id: str,
+        active: bool,
+        silent_seconds: float,
+    ) -> None:
+        payload = {
+            "schema_version": 1,
+            "timestamp": int(datetime.now(timezone.utc).timestamp() * 1000),
+            "device_id": device_id,
+            "patient_id": patient_id,
+            "category": "connectivity",
+            "severity": "critical" if active else "info",
+            "code": "DATA_STREAM_STALE" if active else "DATA_STREAM_RESTORED",
+            "message": (
+                f"Nessun dato posturale ricevuto da {silent_seconds:.1f} secondi"
+                if active
+                else "Flusso dati posturali ripristinato"
+            ),
+            "active": active,
+            "silent_seconds": round(silent_seconds, 1),
+        }
+        client.publish(self.alert_topic, json.dumps(payload), qos=1)
+
+    async def _monitor_data_stream(self) -> None:
+        while True:
+            await asyncio.sleep(1)
+            client = self._client
+            if client is None or not client.is_connected():
+                continue
+            now = time.monotonic()
+            stale: list[tuple[str, str, float]] = []
+            with self._lock:
+                for device_id, last_seen in self._last_sample_monotonic.items():
+                    silent_seconds = now - last_seen
+                    if silent_seconds < self.stale_seconds or device_id in self._stale_alerted:
+                        continue
+                    self._stale_alerted.add(device_id)
+                    stale.append((device_id, self._device_patient[device_id], silent_seconds))
+            for device_id, patient_id, silent_seconds in stale:
+                self._publish_stream_alert(
+                    client,
+                    device_id=device_id,
+                    patient_id=patient_id,
+                    active=True,
+                    silent_seconds=silent_seconds,
+                )
