@@ -59,7 +59,7 @@ docker compose --profile simulation up -d --build simulator
 
 Servizi locali principali:
 
-- API FastAPI: `http://localhost:8000`
+- API FastAPI: `http://localhost:8000/docs
 - Node-RED: `http://localhost:1880`
 - Grafana medico: `http://localhost:3000` (credenziali SmartBack con ruolo medico)
 - InfluxDB: `http://localhost:8086`
