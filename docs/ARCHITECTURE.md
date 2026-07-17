@@ -31,6 +31,13 @@ Simulatore Python ───┘                              │
    raggiungibile attraverso un gateway che accetta soltanto sessioni SmartBack
    appartenenti a medici verificati.
 
+## Storico persistente
+
+InfluxDB conserva lo storico con retention infinita. Grafana lo legge per la
+vista medica; paziente e medico nell'app passano invece dagli endpoint FastAPI,
+che applicano identita e associazione medico-paziente. Il contratto condiviso,
+gli intervalli e le risposte sono descritti in `docs/HISTORY_API.md`.
+
 L'ESP32/gateway deve occuparsi di acquisizione e trasmissione. Le soglie e i
 calcoli posturali restano nel backend, così possono cambiare senza riflash del
 dispositivo.

@@ -4,7 +4,20 @@
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
   "id": null,
-  "links": [],
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "history",
+      "includeVars": true,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Apri storico paziente",
+      "tooltip": "Consulta lo storico persistente del paziente",
+      "type": "link",
+      "url": "/grafana/d/smartback-history/smartback-storico-paziente"
+    }
+  ],
   "liveNow": false,
   "panels": [
     {
@@ -46,7 +59,7 @@
     {
       "datasource": {"type": "influxdb", "uid": "smartback-influx"},
       "description": "Stato del flusso live. La maglia e considerata disconnessa dopo 10 secondi senza dati posturali.",
-      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [{"options": {"0": {"color": "red", "index": 0, "text": "Disconnessa"}, "1": {"color": "green", "index": 1, "text": "Connessa"}}, "type": "value"}], "noValue": "Disconnessa", "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [{"options": {"0": {"color": "red", "index": 0, "text": "OFF"}, "1": {"color": "green", "index": 1, "text": "ON"}}, "type": "value"}], "noValue": "OFF", "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
       "gridPos": {"h": 4, "w": 4, "x": 15, "y": 0},
       "id": 10,
       "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
@@ -124,7 +137,7 @@
         "definition": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"posture\", tag: \"patient_id\", predicate: (r) => r._measurement == \"posture\", start: -30d)",
         "hide": 0,
         "includeAll": false,
-        "label": "Paziente",
+        "label": "Paziente monitorato",
         "multi": false,
         "name": "patient_id",
         "options": [],
@@ -140,7 +153,7 @@
         "current": {"selected": true, "text": "Tutti", "value": "$__all"},
         "hide": 0,
         "includeAll": true,
-        "label": "Tipo alert",
+        "label": "Filtra per tipo alert",
         "multi": false,
         "name": "alert_type",
         "options": [],
@@ -155,5 +168,5 @@
   "timezone": "browser",
   "title": "SmartBack - Monitoraggio paziente",
   "uid": "smartback-overview",
-  "version": 10
+  "version": 14
 }

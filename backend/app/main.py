@@ -3,11 +3,12 @@ import base64
 import binascii
 import hashlib
 import hmac
+import math
 import re
 import secrets
 import sqlite3
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Response, WebSocket, WebSocketDisconnect
@@ -614,15 +615,75 @@ def query_posture_history(patient_code: str, minutes: int, limit: int = 600) -> 
     )
 
 
+def normalize_history_range(
+    *,
+    minutes: int,
+    start: datetime | None,
+    end: datetime | None,
+) -> tuple[datetime, datetime, int]:
+    requested_end = end or datetime.now(timezone.utc)
+    if requested_end.tzinfo is None:
+        requested_end = requested_end.replace(tzinfo=timezone.utc)
+    requested_end = requested_end.astimezone(timezone.utc)
+    if start is None:
+        normalized_minutes = min(max(minutes, 1), 527_040)
+        requested_start = requested_end - timedelta(minutes=normalized_minutes)
+    else:
+        requested_start = (
+            start.replace(tzinfo=timezone.utc) if start.tzinfo is None else start.astimezone(timezone.utc)
+        )
+        normalized_minutes = max(1, math.ceil((requested_end - requested_start).total_seconds() / 60))
+    if requested_start >= requested_end:
+        raise HTTPException(status_code=422, detail="L'inizio dello storico deve precedere la fine")
+    if requested_end - requested_start > timedelta(days=366):
+        raise HTTPException(status_code=422, detail="L'intervallo massimo consultabile e di 366 giorni")
+    return requested_start, requested_end, normalized_minutes
+
+
 @app.get("/api/v1/posture/history")
 def posture_history(
     minutes: int = 60,
     patient_id: str | None = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    limit: int = 600,
     user: sqlite3.Row = Depends(current_user),
 ):
     patient = accessible_patient(user, patient_id)
-    rows = query_posture_history(patient["patient_code"], minutes)
-    return {"items": rows, "count": len(rows), "minutes": min(max(minutes, 1), 10080)}
+    if influx_manager is None:
+        raise HTTPException(status_code=503, detail="Archivio temporale non disponibile")
+    requested_start, requested_end, normalized_minutes = normalize_history_range(
+        minutes=minutes, start=start, end=end
+    )
+    result = influx_manager.query_posture_history_details(
+        patient["patient_code"],
+        start=requested_start,
+        end=requested_end,
+        profile=threshold_profile_for_patient(patient),
+        limit=limit,
+        stale_seconds=DATA_STALE_SECONDS,
+    )
+    return {
+        **result,
+        "minutes": normalized_minutes,
+        "patient_id": patient["id"],
+        "patient_code": patient["patient_code"],
+    }
+
+
+@app.get("/api/v1/posture/history/availability")
+def posture_history_availability(
+    patient_id: str | None = None,
+    user: sqlite3.Row = Depends(current_user),
+):
+    patient = accessible_patient(user, patient_id)
+    if influx_manager is None:
+        raise HTTPException(status_code=503, detail="Archivio temporale non disponibile")
+    return {
+        **influx_manager.query_posture_availability(patient["patient_code"]),
+        "patient_id": patient["id"],
+        "patient_code": patient["patient_code"],
+    }
 
 
 @app.get("/api/v1/patient/statistics")

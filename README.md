@@ -91,4 +91,6 @@ Quando cambia la rete Wi-Fi, aggiornare `HOST_IP` in `.env`, ricreare il contain
   SmartBack verificati con ruolo `doctor`.
 - La configurazione dell'accesso medico e descritta in
   `docs/GRAFANA_MEDICAL_ACCESS.md`.
+- Il contratto dello storico persistente condiviso dalle interfacce e descritto
+  in `docs/HISTORY_API.md`.
 - La cartella `REPORT_TEMPORANEI` contiene il registro di sviluppo e dovrà essere eliminata dopo la preparazione della documentazione finale.
