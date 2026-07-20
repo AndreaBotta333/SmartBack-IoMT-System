@@ -28,8 +28,8 @@ type DoctorPatient = User & { associated_at?: string; has_live_data: boolean };
 type PostureStatus = "neutral" | "deviated" | "prolonged_deviation" | "marked_deviation";
 type PostureSample = {
   timestamp: number; device_id: string; patient_id: string;
-  pitch_deg: number; roll_deg: number; reference_pitch_deg: number;
-  deviation_deg: number; deviation_duration_seconds: number;
+  pitch_deg: number; roll_deg: number; reference_pitch_deg: number; reference_roll_deg: number;
+  deviation_deg: number; pitch_deviation_deg: number; roll_deviation_deg: number; deviation_duration_seconds: number;
   posture_status: PostureStatus; alert: string | null; threshold_profile: string;
 };
 type DeviceStatus = { device_id: string; state_of_charge?: number; charging?: boolean };
@@ -417,11 +417,6 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
     return () => { active = false; if (reconnectTimer.current) clearTimeout(reconnectTimer.current); socket?.close(); };
   }, [selectedPatient?.patient_code, session.user.patient_code, session.user.role]);
 
-  const chartData = useMemo(() => ({
-    labels: visibleSamples.map((_, index) => index === 0 || index === visibleSamples.length - 1 ? `${index + 1}` : ""),
-    datasets: [{ data: visibleSamples.length ? visibleSamples.map((sample) => sample.deviation_deg) : [0], color: () => "#087f6a", strokeWidth: 3 }],
-  }), [visibleSamples]);
-
   async function associatePatient() {
     const fiscalCode = associationFiscalCode.toUpperCase().replace(/\s/g, "");
     if (!isValidFiscalCode(fiscalCode)) {
@@ -530,10 +525,8 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
               <Metric label="Roll" value={formatSigned(latest.roll_deg)} />
               <Metric label="Durata" value={`${latest.deviation_duration_seconds.toFixed(0)} s`} />
             </View>
-            <View style={[styles.whiteCard, dark && styles.surfaceDark]}>
-              <View style={styles.sectionHeading}><View><Text style={[styles.sectionTitle, dark && styles.textDark]}>Andamento recente</Text><Text style={[styles.mutedSmall, dark && styles.mutedDark]}>Ultimi {visibleSamples.length} campioni · gradi</Text></View><View style={styles.legendDot}><View style={styles.miniDot} /><Text style={[styles.legendText, dark && styles.mutedDark]}>Deviazione</Text></View></View>
-              <LineChart data={chartData} width={Math.max(280, width - 56)} height={190} withDots={false} withOuterLines={false} yAxisSuffix="°" chartConfig={{ backgroundGradientFrom: dark ? "#162521" : "#fff", backgroundGradientTo: dark ? "#162521" : "#fff", decimalPlaces: 0, color: (opacity = 1) => `rgba(8,127,106,${opacity})`, labelColor: (opacity = 1) => dark ? `rgba(205,225,219,${opacity})` : `rgba(71,84,103,${opacity})`, propsForBackgroundLines: { stroke: dark ? "#345049" : "#e4eeeb", strokeDasharray: "4 4" } }} bezier style={styles.chart} />
-            </View>
+            <LiveAxisChart title="Pitch in tempo reale" samples={visibleSamples} field="pitch_deviation_deg" color="#315f9a" width={Math.max(280, width - 56)} />
+            <LiveAxisChart title="Roll in tempo reale" samples={visibleSamples} field="roll_deviation_deg" color="#8b5fbf" width={Math.max(280, width - 56)} />
             <HistoricalInsights session={session} patient={selectedPatient} />
             {session.user.role === "patient" && <PatientNightSection status={nightStatus} sample={nightSample} clock={nightClock} statusSyncedAt={nightStatusSyncedAt} positionSince={nightPositionSince} busy={nightBusy} error={nightError} onToggle={toggleNightMode} />}
             {session.user.role === "doctor" && selectedPatient && <DoctorNightSection session={session} patient={selectedPatient} status={nightStatus} sample={nightSample} clock={nightClock} statusSyncedAt={nightStatusSyncedAt} positionSince={nightPositionSince} error={nightError} />}
@@ -755,15 +748,26 @@ function HistoricalInsights({ session, patient }: { session: Session; patient: D
   return (
     <>
       <View style={[styles.historyCard, dark && styles.surfaceDark]}>
-        <View style={styles.historyHeading}><View><Text style={[styles.sectionTitle, dark && styles.textDark]}>Storico diurno</Text><Text style={[styles.mutedSmall, dark && styles.mutedDark]}>{session.user.role === "patient" ? "Percentuali di postura nel periodo selezionato" : "Deviazioni pitch e roll nell'intera finestra selezionata"}</Text></View>{loading && <ActivityIndicator color="#087f6a" size="small" />}</View>
+        <View style={styles.historyHeading}><View><Text style={[styles.sectionTitle, dark && styles.textDark]}>Storico diurno</Text><Text style={[styles.mutedSmall, dark && styles.mutedDark]}>{session.user.role === "patient" ? "Percentuali e deviazioni nel periodo selezionato" : "Deviazioni pitch e roll nell'intera finestra selezionata"}</Text></View>{loading && <ActivityIndicator color="#087f6a" size="small" />}</View>
         <View style={styles.periodRow}>{HISTORY_PERIODS.map((option) => <Pressable key={option.minutes} onPress={() => setPeriod(option.minutes)} style={[styles.periodButton, period === option.minutes && styles.periodButtonSelected]}><Text style={[styles.periodText, period === option.minutes && styles.periodTextSelected]}>{option.label}</Text></Pressable>)}</View>
-        {session.user.role === "doctor" ? <><HistoryAxisChart title="Deviazione pitch" samples={chartSamples} period={period} field="pitch_deviation_deg" color="#315f9a" width={Math.max(280, width - 56)} /><HistoryAxisChart title="Deviazione roll" samples={chartSamples} period={period} field="roll_deviation_deg" color="#8b5fbf" width={Math.max(280, width - 56)} /></> : statistics && <View style={styles.patientHistoryPercentages}><Statistic label="Postura corretta" value={`${statistics.correct_percentage}%`} color="#087f6a" /><Statistic label="Postura scorretta" value={`${statistics.incorrect_percentage}%`} color="#d92d20" /></View>}
+        {session.user.role === "patient" && statistics && <View style={styles.patientHistoryPercentages}><Statistic label="Postura corretta" value={`${statistics.correct_percentage}%`} color="#087f6a" /><Statistic label="Postura scorretta" value={`${statistics.incorrect_percentage}%`} color="#d92d20" /></View>}
+        <HistoryAxisChart title="Deviazione pitch" samples={chartSamples} period={period} field="pitch_deviation_deg" color="#315f9a" width={Math.max(280, width - 56)} />
+        <HistoryAxisChart title="Deviazione roll" samples={chartSamples} period={period} field="roll_deviation_deg" color="#8b5fbf" width={Math.max(280, width - 56)} />
         {!loading && history.length === 0 && <Text style={styles.noHistoryText}>Nessun dato disponibile nel periodo selezionato.</Text>}
         {error ? <Text style={styles.formError}>{error}</Text> : null}
       </View>
 
     </>
   );
+}
+
+function LiveAxisChart({ title, samples, field, color, width }: { title: string; samples: PostureSample[]; field: "pitch_deviation_deg" | "roll_deviation_deg"; color: string; width: number }) {
+  const { dark } = useAppTheme();
+  const data = {
+    labels: samples.length ? samples.map((_, index) => index === 0 || index === samples.length - 1 ? `${index + 1}` : "") : [""],
+    datasets: [{ data: samples.length ? samples.map((sample) => sample[field]) : [0], color: () => color, strokeWidth: 3 }],
+  };
+  return <View style={[styles.whiteCard, dark && styles.surfaceDark]}><View style={styles.sectionHeading}><View><Text style={[styles.sectionTitle, dark && styles.textDark]}>{title}</Text><Text style={[styles.mutedSmall, dark && styles.mutedDark]}>Deviazione dal riferimento · ultimi {samples.length} campioni</Text></View><View style={styles.legendDot}><View style={[styles.miniDot, { backgroundColor: color }]} /><Text style={[styles.legendText, dark && styles.mutedDark]}>Deviazione</Text></View></View><LineChart data={data} width={width} height={190} withDots={false} withOuterLines={false} yAxisSuffix="°" chartConfig={{ backgroundGradientFrom: dark ? "#162521" : "#fff", backgroundGradientTo: dark ? "#162521" : "#fff", decimalPlaces: 0, color: () => color, labelColor: (opacity = 1) => dark ? `rgba(205,225,219,${opacity})` : `rgba(71,84,103,${opacity})`, propsForBackgroundLines: { stroke: dark ? "#345049" : "#e4eeeb", strokeDasharray: "4 4" } }} style={styles.chart} /></View>;
 }
 
 function HistoryAxisChart({ title, samples, period, field, color, width }: { title: string; samples: HistorySample[]; period: HistoryPeriod; field: "pitch_deviation_deg" | "roll_deviation_deg"; color: string; width: number }) {

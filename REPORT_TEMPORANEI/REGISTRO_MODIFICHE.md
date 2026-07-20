@@ -563,3 +563,19 @@ Introdurre una modalità notturna attivabile dal Paziente, mostrare in tempo rea
 
 - Controllo TypeScript completato senza errori nel container Expo.
 - Bundle Android Expo generato correttamente con la nuova struttura Paziente.
+
+## 20 luglio 2026 — Grafici Pitch e Roll live e storico Paziente
+
+### Modifiche
+
+- Separato il precedente grafico unico in tempo reale in due grafici distinti: `Pitch in tempo reale` e `Roll in tempo reale`.
+- Applicata la nuova visualizzazione sia alla pagina personale del Paziente sia alla scheda del Paziente consultata dal Medico.
+- Collegati i grafici ai valori specifici `pitch_deviation_deg` e `roll_deviation_deg` calcolati dal backend rispetto ai rispettivi riferimenti.
+- Mantenute le curve senza punti sui singoli campioni per una lettura più pulita.
+- Aggiunti allo storico diurno del Paziente i grafici `Deviazione pitch` e `Deviazione roll`, già disponibili nella vista del Medico.
+- Conservato nel lato Paziente anche il riepilogo percentuale delle posture corrette e scorrette.
+
+### Verifiche
+
+- Controllo TypeScript completato senza errori nel container Expo.
+- Bundle Android Expo generato correttamente con i nuovi grafici.
