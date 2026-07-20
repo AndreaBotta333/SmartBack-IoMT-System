@@ -20,7 +20,7 @@
       "id": 1,
       "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: 0) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\" and r.session_id == \"${session_id}\") |> group(columns: []) |> last()", "refId": "A"}],
+      "targets": [{"query": "latestSession = from(bucket: \"posture\") |> range(start: 0) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> findRecord(fn: (key) => true, idx: 0)\nfrom(bucket: \"posture\") |> range(start: 0) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\" and r.session_id == latestSession.session_id) |> group(columns: []) |> last()", "refId": "A"}],
       "title": "Posizione corrente",
       "type": "stat"
     },
@@ -32,7 +32,7 @@
       "id": 3,
       "options": {"colorMode": "none", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: 0) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\" and r.session_id == \"${session_id}\") |> group(columns: []) |> last() |> map(fn: (r) => ({r with _value: int(v: r._time) / 1000000}))", "refId": "A"}],
+      "targets": [{"query": "latestSession = from(bucket: \"posture\") |> range(start: 0) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> findRecord(fn: (key) => true, idx: 0)\nfrom(bucket: \"posture\") |> range(start: 0) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\" and r.session_id == latestSession.session_id) |> group(columns: []) |> last() |> map(fn: (r) => ({r with _value: int(v: r._time) / 1000000}))", "refId": "A"}],
       "title": "Ultima rilevazione",
       "type": "stat"
     },
@@ -44,7 +44,7 @@
       "id": 4,
       "options": {"alignValue": "left", "legend": {"displayMode": "hidden", "placement": "bottom", "showLegend": false}, "mergeValues": true, "rowHeight": 0.8, "showValue": "never", "tooltip": {"mode": "single", "sort": "none"}},
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\" and r.session_id == \"${session_id}\") |> group(columns: []) |> sort(columns: [\"_time\"])", "refId": "A"}],
+      "targets": [{"query": "latestSession = from(bucket: \"posture\") |> range(start: 0) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> findRecord(fn: (key) => true, idx: 0)\nfrom(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\" and r.session_id == latestSession.session_id) |> group(columns: []) |> sort(columns: [\"_time\"])", "refId": "A"}],
       "title": "Posizioni durante la notte",
       "type": "state-timeline"
     },
@@ -56,18 +56,17 @@
       "id": 5,
       "options": {"displayLabels": ["name", "percent"], "legend": {"displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"]}, "pieType": "donut", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "tooltip": {"hideZeros": false, "mode": "single", "sort": "none"}},
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"confidence\" and r.patient_id == \"${patient_id}\" and r.session_id == \"${session_id}\") |> group(columns: [\"position\"]) |> elapsed(unit: 1s) |> filter(fn: (r) => r.elapsed >= 0 and r.elapsed <= 10) |> group(columns: [\"position\"]) |> sum(column: \"elapsed\") |> map(fn: (r) => ({_time: r._time, _value: float(v: r.elapsed), position: r.position}))", "refId": "A"}],
+      "targets": [{"query": "latestSession = from(bucket: \"posture\") |> range(start: 0) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> findRecord(fn: (key) => true, idx: 0)\nfrom(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"confidence\" and r.patient_id == \"${patient_id}\" and r.session_id == latestSession.session_id) |> group(columns: [\"position\"]) |> elapsed(unit: 1s) |> filter(fn: (r) => r.elapsed >= 0 and r.elapsed <= 10) |> group(columns: [\"position\"]) |> sum(column: \"elapsed\") |> map(fn: (r) => ({_time: r._time, _value: float(v: r.elapsed), position: r.position}))", "refId": "A"}],
       "title": "Distribuzione delle posizioni",
       "type": "piechart"
     }
   ],
-  "refresh": "5s",
+  "refresh": "1s",
   "schemaVersion": 41,
   "tags": ["smartback", "night-monitoring", "medical"],
   "templating": {
     "list": [
-      {"current": {}, "datasource": {"type": "influxdb", "uid": "smartback-influx"}, "definition": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"posture\", tag: \"patient_id\", predicate: (r) => r._measurement == \"night_position\", start: 0)", "hide": 0, "includeAll": false, "label": "Paziente monitorato", "multi": false, "name": "patient_id", "options": [], "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"posture\", tag: \"patient_id\", predicate: (r) => r._measurement == \"night_position\", start: 0)", "refresh": 1, "regex": "", "skipUrlSync": false, "sort": 1, "type": "query"},
-      {"current": {}, "datasource": {"type": "influxdb", "uid": "smartback-influx"}, "definition": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"posture\", tag: \"session_id\", predicate: (r) => r._measurement == \"night_position\" and r.patient_id == \"${patient_id}\", start: 0)", "hide": 0, "includeAll": false, "label": "Sessione notturna", "multi": false, "name": "session_id", "options": [], "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"posture\", tag: \"session_id\", predicate: (r) => r._measurement == \"night_position\" and r.patient_id == \"${patient_id}\", start: 0)", "refresh": 1, "regex": "", "skipUrlSync": false, "sort": 2, "type": "query"}
+      {"current": {}, "datasource": {"type": "influxdb", "uid": "smartback-influx"}, "definition": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"posture\", tag: \"patient_id\", predicate: (r) => r._measurement == \"night_position\", start: 0)", "hide": 0, "includeAll": false, "label": "Paziente monitorato", "multi": false, "name": "patient_id", "options": [], "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"posture\", tag: \"patient_id\", predicate: (r) => r._measurement == \"night_position\", start: 0)", "refresh": 1, "regex": "", "skipUrlSync": false, "sort": 1, "type": "query"}
     ]
   },
   "time": {"from": "now-12h", "to": "now"},

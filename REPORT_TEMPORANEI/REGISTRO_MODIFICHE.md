@@ -440,3 +440,22 @@ Introdurre una modalità notturna attivabile dal Paziente, mostrare in tempo rea
 - Ripristinate nell'app le diciture `decubito destro` e `decubito sinistro`.
 - Allineati i colori delle posizioni nelle dashboard Grafana ai colori esatti utilizzati nell'app.
 - Impostato il ritorno automatico al tema chiaro quando termina la modalità notte, anche se la chiusura viene rilevata dal successivo aggiornamento dello stato.
+
+## 20 luglio 2026 — Ripristino monitoraggio notturno live in Grafana
+
+### Problema individuato
+
+- I campioni notturni arrivavano regolarmente in InfluxDB, ma la dashboard filtrava anche per la variabile `session_id`, che poteva rimanere vuota quando l'accesso avveniva dalla Home o tramite un collegamento contenente il solo paziente.
+
+### Modifiche
+
+- Rimossa la selezione manuale obbligatoria della sessione dalla dashboard live.
+- Ogni pannello ricava automaticamente l'ultima sessione notturna disponibile per il paziente selezionato.
+- Mantenuto il filtro per sessione nelle query, evitando di mescolare dati appartenenti a notti differenti.
+- Ridotto l'intervallo di aggiornamento automatico della dashboard da 5 a 1 secondo.
+
+### Verifiche
+
+- Confermata la presenza di una sessione attiva e di campioni `night_position` aggiornati in InfluxDB.
+- Eseguita con successo su InfluxDB la nuova query di selezione automatica dell'ultima sessione.
+- Validata la sintassi JSON della dashboard Grafana.
