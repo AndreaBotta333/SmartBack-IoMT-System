@@ -531,3 +531,18 @@ Introdurre una modalità notturna attivabile dal Paziente, mostrare in tempo rea
 
 - Controllo TypeScript completato senza errori nel container Expo.
 - Bundle Android Expo generato correttamente con il nuovo grafico a torta.
+
+## 20 luglio 2026 — Rimozione calibrazione Paziente e centraggio torta
+
+### Modifiche
+
+- Rimosso dalla pagina Paziente il pulsante `Calibra postura di riferimento`.
+- Rimossi dal codice mobile anche lo stato e la funzione di calibrazione non più utilizzati.
+- Ridotta la larghezza del grafico a torta in base allo spazio interno effettivo della card.
+- Eliminato lo spostamento laterale del grafico e aggiunto un centraggio esplicito.
+- Evitato il taglio del bordo sinistro del grafico sui display più stretti.
+
+### Verifiche
+
+- Controllo TypeScript completato senza errori nel container Expo.
+- Bundle Android Expo generato correttamente dopo la correzione grafica.
