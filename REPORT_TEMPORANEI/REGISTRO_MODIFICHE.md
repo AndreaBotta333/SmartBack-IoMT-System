@@ -596,3 +596,20 @@ Introdurre una modalità notturna attivabile dal Paziente, mostrare in tempo rea
 
 - Controllo TypeScript completato senza errori nel container Expo.
 - Bundle Android Expo generato correttamente con riquadri e riferimenti di calibrazione.
+
+## 20 luglio 2026 — Scala live controllata e associazione rimossa
+
+### Modifiche
+
+- Trasformate in tratteggiate le linee orizzontali che rappresentano i riferimenti di calibrazione nei grafici Pitch e Roll.
+- Impostato per entrambi i grafici un intervallo verticale minimo compreso tra `-30°` e `+30°`.
+- La scala si amplia automaticamente quando un valore rilevato o un riferimento calibrato supera uno dei due limiti.
+- Applicato il comportamento sia alla pagina Paziente sia alla scheda consultata dal Medico.
+- Rimossa dall'app la funzionalità di associazione di un nuovo Paziente tramite codice fiscale.
+- Rimossi anche stato, chiamata API, tendina, pulsante e stili non più utilizzati dal relativo flusso.
+- Aggiornato lo stato vuoto della lista Medico per indicare che le associazioni vengono gestite esternamente all'app.
+
+### Verifiche
+
+- Controllo TypeScript completato senza errori nel container Expo.
+- Bundle Android Expo generato correttamente con le nuove impostazioni dei grafici.

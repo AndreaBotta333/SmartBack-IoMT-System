@@ -296,10 +296,7 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
   const [message, setMessage] = useState("");
   const [doctorPatients, setDoctorPatients] = useState<DoctorPatient[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<DoctorPatient | null>(null);
-  const [associationFiscalCode, setAssociationFiscalCode] = useState("");
-  const [associationOpen, setAssociationOpen] = useState(false);
   const [patientsLoading, setPatientsLoading] = useState(session.user.role === "doctor");
-  const [associating, setAssociating] = useState(false);
   const [nightStatus, setNightStatus] = useState<NightStatus | null>(null);
   const [nightSample, setNightSample] = useState<NightSample | null>(null);
   const [nightBusy, setNightBusy] = useState(false);
@@ -417,26 +414,6 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
     return () => { active = false; if (reconnectTimer.current) clearTimeout(reconnectTimer.current); socket?.close(); };
   }, [selectedPatient?.patient_code, session.user.patient_code, session.user.role]);
 
-  async function associatePatient() {
-    const fiscalCode = associationFiscalCode.toUpperCase().replace(/\s/g, "");
-    if (!isValidFiscalCode(fiscalCode)) {
-      Alert.alert("Codice fiscale non valido", "Inserisci il codice fiscale completo e corretto del paziente.");
-      return;
-    }
-    setAssociating(true);
-    try {
-      await api("/api/v1/doctor/patients", { method: "POST", body: JSON.stringify({ fiscal_code: fiscalCode }) }, session.access_token);
-      setAssociationFiscalCode("");
-      setAssociationOpen(false);
-      await loadDoctorPatients();
-      Alert.alert("Associazione completata", "Il paziente è stato aggiunto alla tua lista.");
-    } catch (caught) {
-      Alert.alert("Associazione non riuscita", caught instanceof Error ? caught.message : "Riprova più tardi");
-    } finally {
-      setAssociating(false);
-    }
-  }
-
   async function toggleNightMode() {
     if (session.user.role !== "patient" || nightBusy) return;
     const stopping = Boolean(nightStatus?.active);
@@ -482,7 +459,7 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
       <ScrollView style={dark && styles.screenDark} contentContainerStyle={styles.dashboardContent}>
         <View>
           <Text style={[styles.welcome, dark && styles.textDark]}>Ciao, {session.user.name.split(" ")[0]}</Text>
-          <Text style={[styles.roleCaption, dark && styles.mutedDark]}>{roleLabel} · {session.user.role === "doctor" ? "Gestisci i pazienti associati" : "Il tuo monitoraggio posturale"}</Text>
+          <Text style={[styles.roleCaption, dark && styles.mutedDark]}>{roleLabel} · {session.user.role === "doctor" ? "Consulta i pazienti associati" : "Il tuo monitoraggio posturale"}</Text>
         </View>
         {session.user.role === "patient" && <PatientDeviceSummary deviceId={monitoredDeviceId} battery={monitoredBattery} />}
         {session.user.role === "patient" && <MonitoringSectionHeader mode="day" title="Monitoraggio diurno" subtitle="Stato attuale e percentuali dello storico posturale" />}
@@ -491,12 +468,6 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
           <DoctorPatientDirectory
             patients={doctorPatients}
             loading={patientsLoading}
-            fiscalCode={associationFiscalCode}
-            onFiscalCodeChange={setAssociationFiscalCode}
-            associationOpen={associationOpen}
-            onToggleAssociation={() => setAssociationOpen((current) => !current)}
-            associating={associating}
-            onAssociate={associatePatient}
             onSelect={setSelectedPatient}
           />
         ) : !latest || !posture ? (
@@ -770,14 +741,17 @@ function CalibrationSummary({ pitch, roll }: { pitch: number; roll: number }) {
 function LiveAxisChart({ title, samples, valueField, referenceField, color, referenceColor, width }: { title: string; samples: PostureSample[]; valueField: "pitch_deg" | "roll_deg"; referenceField: "reference_pitch_deg" | "reference_roll_deg"; color: string; referenceColor: string; width: number }) {
   const { dark } = useAppTheme();
   const reference = samples.length ? samples[samples.length - 1][referenceField] : 0;
+  const chartPointCount = Math.max(samples.length, 1);
   const data = {
     labels: samples.length ? samples.map((_, index) => index === 0 || index === samples.length - 1 ? `${index + 1}` : "") : [""],
     datasets: [
       { data: samples.length ? samples.map((sample) => sample[valueField]) : [0], color: () => color, strokeWidth: 3 },
-      { data: samples.length ? samples.map(() => reference) : [reference], color: () => referenceColor, strokeWidth: 2 },
+      { data: Array(chartPointCount).fill(reference), color: () => referenceColor, strokeWidth: 2, strokeDashArray: [7, 6] },
+      { data: Array(chartPointCount).fill(30), color: () => "rgba(0,0,0,0)", strokeWidth: 1, withDots: false },
+      { data: Array(chartPointCount).fill(-30), color: () => "rgba(0,0,0,0)", strokeWidth: 1, withDots: false },
     ],
   };
-  return <View style={[styles.whiteCard, dark && styles.surfaceDark]}><View style={styles.sectionHeading}><View style={styles.liveChartHeading}><Text style={[styles.sectionTitle, dark && styles.textDark]}>{title}</Text><Text style={[styles.mutedSmall, dark && styles.mutedDark]}>Valore rilevato e riferimento calibrato · ultimi {samples.length} campioni</Text></View><View style={styles.liveLegend}><View style={styles.legendDot}><View style={[styles.miniDot, { backgroundColor: color }]} /><Text style={[styles.legendText, dark && styles.mutedDark]}>Valore</Text></View><View style={styles.legendDot}><View style={[styles.referenceLegendLine, { backgroundColor: referenceColor }]} /><Text style={[styles.legendText, dark && styles.mutedDark]}>Calibrazione</Text></View></View></View><LineChart data={data} width={width} height={190} withDots={false} withOuterLines={false} yAxisSuffix="°" chartConfig={{ backgroundGradientFrom: dark ? "#162521" : "#fff", backgroundGradientTo: dark ? "#162521" : "#fff", decimalPlaces: 0, color: () => color, labelColor: (opacity = 1) => dark ? `rgba(205,225,219,${opacity})` : `rgba(71,84,103,${opacity})`, propsForBackgroundLines: { stroke: dark ? "#345049" : "#e4eeeb", strokeDasharray: "4 4" } }} style={styles.chart} /></View>;
+  return <View style={[styles.whiteCard, dark && styles.surfaceDark]}><View style={styles.sectionHeading}><View style={styles.liveChartHeading}><Text style={[styles.sectionTitle, dark && styles.textDark]}>{title}</Text><Text style={[styles.mutedSmall, dark && styles.mutedDark]}>Valore rilevato e riferimento calibrato · ultimi {samples.length} campioni</Text></View><View style={styles.liveLegend}><View style={styles.legendDot}><View style={[styles.miniDot, { backgroundColor: color }]} /><Text style={[styles.legendText, dark && styles.mutedDark]}>Valore</Text></View><View style={styles.legendDot}><View style={[styles.referenceLegendLine, { borderColor: referenceColor }]} /><Text style={[styles.legendText, dark && styles.mutedDark]}>Calibrazione</Text></View></View></View><LineChart data={data} width={width} height={190} segments={6} withDots={false} withShadow={false} withOuterLines={false} yAxisSuffix="°" chartConfig={{ backgroundGradientFrom: dark ? "#162521" : "#fff", backgroundGradientTo: dark ? "#162521" : "#fff", decimalPlaces: 0, color: () => color, labelColor: (opacity = 1) => dark ? `rgba(205,225,219,${opacity})` : `rgba(71,84,103,${opacity})`, propsForBackgroundLines: { stroke: dark ? "#345049" : "#e4eeeb", strokeDasharray: "4 4" } }} style={styles.chart} /></View>;
 }
 
 function HistoryAxisChart({ title, samples, period, field, color, width }: { title: string; samples: HistorySample[]; period: HistoryPeriod; field: "pitch_deviation_deg" | "roll_deviation_deg"; color: string; width: number }) {
@@ -952,11 +926,9 @@ function MenuButton({ icon, title, subtitle, onPress, danger = false, last = fal
 }
 
 function DoctorPatientDirectory({
-  patients, loading, fiscalCode, onFiscalCodeChange, associationOpen, onToggleAssociation, associating, onAssociate, onSelect,
+  patients, loading, onSelect,
 }: {
-  patients: DoctorPatient[]; loading: boolean; fiscalCode: string;
-  onFiscalCodeChange: (value: string) => void; associationOpen: boolean; onToggleAssociation: () => void; associating: boolean;
-  onAssociate: () => void; onSelect: (patient: DoctorPatient) => void;
+  patients: DoctorPatient[]; loading: boolean; onSelect: (patient: DoctorPatient) => void;
 }) {
   const { dark } = useAppTheme();
   return (
@@ -968,7 +940,7 @@ function DoctorPatientDirectory({
       {loading ? (
         <ActivityIndicator style={{ marginVertical: 32 }} color="#087f6a" size="large" />
       ) : patients.length === 0 ? (
-        <View style={[styles.emptyPatients, dark && styles.surfaceDark]}><Text style={styles.emptyIcon}>◎</Text><Text style={[styles.waitingTitle, dark && styles.textDark]}>Nessun paziente associato</Text><Text style={[styles.emptyText, dark && styles.mutedDark]}>Premi il pulsante + per associare il tuo primo paziente tramite codice fiscale.</Text></View>
+        <View style={[styles.emptyPatients, dark && styles.surfaceDark]}><Text style={styles.emptyIcon}>◎</Text><Text style={[styles.waitingTitle, dark && styles.textDark]}>Nessun paziente associato</Text><Text style={[styles.emptyText, dark && styles.mutedDark]}>Le associazioni dei pazienti vengono gestite esternamente all'app.</Text></View>
       ) : patients.map((patient) => (
         <Pressable key={patient.id} onPress={() => onSelect(patient)} style={({ pressed }) => [styles.patientCard, dark && styles.surfaceDark, pressed && styles.patientCardPressed]}>
           <UserAvatar user={patient} size={48} />
@@ -976,22 +948,6 @@ function DoctorPatientDirectory({
           <View style={styles.patientCardRight}>{patient.has_live_data && <View style={styles.onlineBadge}><View style={styles.miniDot} /><Text style={styles.onlineText}>Live</Text></View>}<Text style={styles.chevron}>›</Text></View>
         </Pressable>
       ))}
-
-      <Pressable accessibilityLabel={associationOpen ? "Chiudi aggiunta paziente" : "Aggiungi paziente"} onPress={onToggleAssociation} style={({ pressed }) => [styles.addPatientButton, associationOpen && styles.addPatientButtonOpen, pressed && styles.pressed]}>
-        <Text style={[styles.addPatientPlus, associationOpen && styles.addPatientPlusOpen]}>{associationOpen ? "×" : "+"}</Text>
-        <Text style={[styles.addPatientText, associationOpen && styles.addPatientTextOpen]}>{associationOpen ? "Chiudi" : "Associa un paziente"}</Text>
-      </Pressable>
-
-      {associationOpen && (
-        <View style={[styles.associationDropdown, dark && styles.surfaceDark]}>
-          <Text style={[styles.sectionTitle, dark && styles.textDark]}>Nuova associazione</Text>
-          <Text style={[styles.mutedSmall, dark && styles.mutedDark]}>Inserisci il codice fiscale usato dal paziente durante la registrazione.</Text>
-          <Field label="CODICE FISCALE DEL PAZIENTE" value={fiscalCode} onChangeText={onFiscalCodeChange} autoCapitalize="characters" autoCorrect={false} maxLength={16} placeholder="RSSMRA80A01H501U" />
-          <Pressable disabled={associating} onPress={onAssociate} style={({ pressed }) => [styles.associateButton, pressed && styles.pressed]}>
-            {associating ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Conferma associazione</Text>}
-          </Pressable>
-        </View>
-      )}
     </>
   );
 }
@@ -1097,13 +1053,11 @@ const styles = StyleSheet.create({
   metricsRow: { flexDirection: "row", gap: 9 }, metricCard: { flex: 1, backgroundColor: "#fff", padding: 13, borderRadius: 15 }, metricLabel: { color: "#78908a", fontSize: 10, fontWeight: "700" }, metricValue: { color: "#153d35", fontSize: 18, fontWeight: "900", marginTop: 4 },
   calibrationHeading: { color: "#153d35", fontSize: 14, fontWeight: "900", marginBottom: 8 }, calibrationRow: { flexDirection: "row", gap: 9 }, calibrationCard: { flex: 1, minHeight: 74, backgroundColor: "#fff", borderRadius: 15, padding: 13, justifyContent: "center" }, calibrationLabel: { color: "#78908a", fontSize: 9, fontWeight: "800" }, calibrationValue: { fontSize: 21, fontWeight: "900", marginTop: 4 }, pitchCalibrationValue: { color: "#1e40af" }, rollCalibrationValue: { color: "#d94f9b" },
   whiteCard: { backgroundColor: "#fff", borderRadius: 21, paddingTop: 17, overflow: "hidden" }, sectionHeading: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", paddingHorizontal: 17 }, sectionTitle: { color: "#153d35", fontSize: 16, fontWeight: "900" }, mutedSmall: { color: "#78908a", fontSize: 10, marginTop: 3 }, legendDot: { flexDirection: "row", alignItems: "center", gap: 5 }, miniDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#087f6a" }, legendText: { color: "#78908a", fontSize: 9 }, chart: { marginLeft: -13, marginTop: 8 },
-  liveChartHeading: { flex: 1, paddingRight: 8 }, liveLegend: { gap: 5, alignItems: "flex-start" }, referenceLegendLine: { width: 12, height: 2, borderRadius: 1 },
+  liveChartHeading: { flex: 1, paddingRight: 8 }, liveLegend: { gap: 5, alignItems: "flex-start" }, referenceLegendLine: { width: 13, height: 3, borderTopWidth: 2, borderStyle: "dashed" },
   deviceSummary: { backgroundColor: "#fff", borderRadius: 16, padding: 12, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#dceae6" }, deviceSummaryItem: { flex: 1, flexDirection: "row", alignItems: "center", gap: 9 }, deviceSummaryIcon: { color: "#20a38c", fontSize: 19 }, deviceSummaryValue: { color: "#153d35", fontWeight: "800", fontSize: 11, marginTop: 3 }, deviceSummaryDivider: { width: 1, height: 34, backgroundColor: "#dceae6", marginHorizontal: 11 },
   notificationCard: { backgroundColor: "#dff5f0", borderRadius: 17, padding: 14, flexDirection: "row", alignItems: "center", gap: 12 }, bellCircle: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#b9e9df", alignItems: "center", justifyContent: "center" }, bell: { color: "#087f6a", fontSize: 17 }, notificationTitle: { color: "#153d35", fontWeight: "900", fontSize: 13 }, notificationText: { color: "#56766f", fontSize: 10, lineHeight: 15, marginTop: 2 }, message: { color: "#42655f", textAlign: "center", fontSize: 11 }, disclaimer: { color: "#8ba09b", textAlign: "center", fontSize: 9, marginTop: 4 },
   nightCard: { borderRadius: 24, padding: 18, backgroundColor: "#16233a", borderWidth: 1, borderColor: "#2d4163", gap: 15, shadowColor: "#07101f", shadowOpacity: 0.18, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 4 }, nightCardActive: { borderColor: "#3d806f" }, nightCardDark: { backgroundColor: "#111d2d", borderColor: "#294b46" }, nightHeader: { flexDirection: "row", alignItems: "center", gap: 11 }, nightMoon: { width: 43, height: 43, borderRadius: 22, backgroundColor: "#243b60", alignItems: "center", justifyContent: "center" }, nightMoonText: { color: "#c8dcff", fontSize: 28, lineHeight: 31 }, nightTitle: { color: "#f1f6ff", fontSize: 18, fontWeight: "900" }, nightSubtitle: { color: "#9eb0cc", fontSize: 10, marginTop: 3 }, nightLiveBadge: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#173c34", borderRadius: 12, paddingHorizontal: 9, paddingVertical: 6 }, nightLiveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#3ec6ae" }, nightLiveText: { color: "#75e0cc", fontSize: 8, fontWeight: "900", letterSpacing: 0.8 }, nightDescription: { color: "#b2bfd2", fontSize: 11, lineHeight: 17 }, nightPositionBox: { backgroundColor: "#101a2b", borderRadius: 18, padding: 17, alignItems: "center", borderWidth: 1, borderColor: "#263a5a" }, nightOverline: { color: "#7e91af", fontSize: 8, fontWeight: "900", letterSpacing: 1 }, nightPosition: { fontSize: 23, fontWeight: "900", marginTop: 7, textAlign: "center" }, nightWaitingText: { color: "#9eb0cc", fontSize: 9, marginTop: 5 }, nightStatsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 }, nightStat: { width: "48%", flexGrow: 1, minHeight: 66, backgroundColor: "#101a2b", borderRadius: 14, padding: 11, borderWidth: 1, borderColor: "#263750" }, nightStatDot: { width: 7, height: 7, borderRadius: 4, position: "absolute", top: 11, right: 11 }, nightStatValue: { color: "#f1f6ff", fontSize: 16, fontWeight: "900" }, nightStatLabel: { color: "#8fa1bd", fontSize: 9, marginTop: 4 }, nightPieCard: { backgroundColor: "#101a2b", borderRadius: 18, paddingTop: 14, paddingHorizontal: 10, borderWidth: 1, borderColor: "#263750", overflow: "hidden" }, nightPieChart: { alignSelf: "center" }, nightPieEmpty: { color: "#9eb0cc", fontSize: 10, lineHeight: 16, textAlign: "center", paddingVertical: 35, paddingHorizontal: 12 }, nightMeta: { flexDirection: "row", justifyContent: "space-between", gap: 10 }, nightMetaText: { color: "#9eb0cc", fontSize: 9, fontWeight: "700" }, nightError: { color: "#ffb4a8", fontSize: 10, lineHeight: 15 }, nightButton: { minHeight: 50, borderRadius: 15, backgroundColor: "#087f6a", alignItems: "center", justifyContent: "center", paddingHorizontal: 14 }, nightStopButton: { backgroundColor: "#a33d3d" }, nightButtonText: { color: "#fff", fontSize: 12, fontWeight: "900", letterSpacing: 0.6 },
   monitoringSectionHeader: { minHeight: 72, borderRadius: 19, padding: 14, flexDirection: "row", alignItems: "center", gap: 12, borderWidth: 1 }, monitoringSectionDay: { backgroundColor: "#e6f7f3", borderColor: "#b4e3d9" }, monitoringSectionNight: { backgroundColor: "#e9eef8", borderColor: "#c8d5ec" }, monitoringSectionHeaderDark: { backgroundColor: "#172621", borderColor: "#355149" }, monitoringSectionIcon: { width: 43, height: 43, borderRadius: 22, alignItems: "center", justifyContent: "center" }, monitoringSectionIconDay: { backgroundColor: "#bdebe1" }, monitoringSectionIconNight: { backgroundColor: "#243b60" }, monitoringSectionIconText: { color: "#087f6a", fontSize: 22, fontWeight: "900" }, monitoringSectionTitle: { color: "#153d35", fontSize: 18, fontWeight: "900" }, monitoringSectionSubtitle: { color: "#658079", fontSize: 10, lineHeight: 15, marginTop: 2 }, doctorNightSection: { gap: 14, marginTop: 8, paddingTop: 16, borderTopWidth: 2, borderTopColor: "#d8e1ef" }, nightHistoryCard: { backgroundColor: "#fff", borderRadius: 21, paddingTop: 17, paddingBottom: 16, overflow: "hidden" }, nightPeriodButton: { borderColor: "#ccd7eb" }, nightPeriodButtonSelected: { backgroundColor: "#315f9a", borderColor: "#315f9a" }, nightHistoryEmpty: { color: "#78908a", fontSize: 11, textAlign: "center", paddingHorizontal: 18, paddingVertical: 20 }, nightChartCaption: { color: "#718294", fontSize: 9, textAlign: "center", paddingHorizontal: 17, marginTop: 4 }, sessionSelectorWrap: { paddingHorizontal: 14, marginTop: 15 }, sessionSelector: { minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: "#ccd7eb", backgroundColor: "#f8fafc", paddingHorizontal: 13, flexDirection: "row", alignItems: "center", gap: 8 }, sessionSelectorText: { flex: 1, color: "#28445d", fontSize: 11, fontWeight: "800" }, sessionSelectorChevron: { color: "#315f9a", fontSize: 18, fontWeight: "900" }, sessionDropdown: { marginTop: 7, borderRadius: 14, borderWidth: 1, borderColor: "#ccd7eb", backgroundColor: "#fff", padding: 9, shadowColor: "#17324d", shadowOpacity: 0.1, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 4 }, sessionSearchInput: { minHeight: 42, borderWidth: 1, borderColor: "#d6dfed", borderRadius: 11, paddingHorizontal: 12, color: "#17324d", fontSize: 11, backgroundColor: "#f8fafc" }, sessionOptionsScroll: { maxHeight: 230, marginTop: 6 }, sessionOption: { minHeight: 54, borderRadius: 10, paddingHorizontal: 11, paddingVertical: 9, justifyContent: "center", borderBottomWidth: 1, borderBottomColor: "#e7ecf4" }, sessionOptionSelected: { backgroundColor: "#e7eef9" }, sessionOptionTitle: { color: "#17324d", fontSize: 11, fontWeight: "900" }, sessionOptionMeta: { color: "#718294", fontSize: 9, marginTop: 3 }, sessionSearchEmpty: { color: "#78908a", fontSize: 10, textAlign: "center", padding: 20 }, nightHistogram: { height: 230, marginHorizontal: 14, marginTop: 17, position: "relative", borderBottomWidth: 1, borderBottomColor: "#d9e2ef" }, histogramGuideTop: { position: "absolute", left: 0, right: 0, top: 21, borderBottomWidth: 1, borderBottomColor: "#e3e9f2" }, histogramGuideMiddle: { position: "absolute", left: 0, right: 0, top: 96, borderBottomWidth: 1, borderBottomColor: "#e3e9f2" }, histogramGuideText: { position: "absolute", top: -12, left: 0, color: "#91a0b2", fontSize: 7 }, histogramBars: { position: "absolute", left: 22, right: 0, top: 0, bottom: 0, flexDirection: "row", alignItems: "flex-end", justifyContent: "space-around" }, histogramColumn: { width: "23%", height: 220, alignItems: "center", justifyContent: "flex-end" }, histogramValue: { color: "#17324d", fontSize: 11, fontWeight: "900", marginBottom: 5 }, histogramTrack: { height: 150, width: 36, justifyContent: "flex-end", backgroundColor: "#edf1f6", borderTopLeftRadius: 7, borderTopRightRadius: 7, overflow: "hidden" }, histogramBar: { width: "100%", borderTopLeftRadius: 7, borderTopRightRadius: 7 }, histogramLabel: { height: 35, color: "#718294", fontSize: 8, fontWeight: "800", lineHeight: 11, textAlign: "center", marginTop: 5 },
-  associationDropdown: { backgroundColor: "#fff", borderRadius: 21, padding: 17, borderWidth: 1, borderColor: "#cfe4df", shadowColor: "#0a4c40", shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 3 }, associateButton: { minHeight: 47, borderRadius: 14, backgroundColor: "#087f6a", alignItems: "center", justifyContent: "center", marginTop: 13 },
-  addPatientButton: { minHeight: 52, borderRadius: 16, borderWidth: 1.5, borderColor: "#087f6a", backgroundColor: "#fff", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, marginTop: 3 }, addPatientButtonOpen: { backgroundColor: "#e2f5f1", borderColor: "#5bb8a8" }, addPatientPlus: { color: "#087f6a", fontSize: 27, lineHeight: 28, fontWeight: "500" }, addPatientPlusOpen: { fontSize: 25 }, addPatientText: { color: "#087f6a", fontSize: 14, fontWeight: "900" }, addPatientTextOpen: { color: "#356c62" },
   directoryHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 5 }, directoryTitle: { color: "#153d35", fontSize: 19, fontWeight: "900" }, countBadge: { minWidth: 25, height: 25, paddingHorizontal: 7, borderRadius: 13, backgroundColor: "#cceee7", alignItems: "center", justifyContent: "center" }, countText: { color: "#087f6a", fontSize: 11, fontWeight: "900" },
   emptyPatients: { minHeight: 210, borderRadius: 21, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", padding: 28 }, emptyIcon: { color: "#64b9aa", fontSize: 38, marginBottom: 8 }, emptyText: { color: "#78908a", fontSize: 12, textAlign: "center", lineHeight: 18, marginTop: 5 },
   patientCard: { minHeight: 84, borderRadius: 18, backgroundColor: "#fff", padding: 14, flexDirection: "row", alignItems: "center", gap: 12, borderWidth: 1, borderColor: "#e0ece9" }, patientCardPressed: { backgroundColor: "#edf8f5", borderColor: "#9cd8cc" }, patientCardName: { color: "#153d35", fontSize: 15, fontWeight: "900" }, patientEmail: { color: "#67817b", fontSize: 11, marginTop: 2 }, patientCardRight: { alignItems: "flex-end", gap: 8 }, onlineBadge: { flexDirection: "row", alignItems: "center", gap: 4, borderRadius: 10, backgroundColor: "#e4f7ee", paddingHorizontal: 7, paddingVertical: 4 }, onlineText: { color: "#087f6a", fontSize: 8, fontWeight: "900" }, chevron: { color: "#5e8f85", fontSize: 25, lineHeight: 25 }, backArrow: { color: "#087f6a", fontSize: 28, lineHeight: 30, marginRight: 8 },
