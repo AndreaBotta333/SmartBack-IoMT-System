@@ -546,3 +546,20 @@ Introdurre una modalità notturna attivabile dal Paziente, mostrare in tempo rea
 
 - Controllo TypeScript completato senza errori nel container Expo.
 - Bundle Android Expo generato correttamente dopo la correzione grafica.
+
+## 20 luglio 2026 — Suddivisione Paziente diurna/notturna
+
+### Modifiche
+
+- Riorganizzata la pagina Paziente in due sezioni graficamente distinte: `Monitoraggio diurno` e `Monitoraggio notturno`, coerenti con la struttura già usata dal Medico.
+- Mantenuta visibile la sezione diurna anche durante una sessione notturna, mostrando l'eventuale assenza di dati live senza nascondere lo storico.
+- Limitato lo storico diurno del Paziente alle percentuali di postura corretta e scorretta.
+- Mantenute le visualizzazioni dettagliate Pitch e Roll esclusivamente nella consultazione del Medico.
+- Rimossi i punti dalle curve dei grafici storici Pitch e Roll.
+- Ripristinata l'impostazione orizzontale precedente del grafico a torta e ridotto soltanto il diametro della circonferenza tramite l'altezza del grafico.
+- Corretta la descrizione `Il tuo monitoraggio posturale` nella testata Paziente.
+
+### Verifiche
+
+- Controllo TypeScript completato senza errori nel container Expo.
+- Bundle Android Expo generato correttamente con la nuova struttura Paziente.

@@ -487,15 +487,12 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
       <ScrollView style={dark && styles.screenDark} contentContainerStyle={styles.dashboardContent}>
         <View>
           <Text style={[styles.welcome, dark && styles.textDark]}>Ciao, {session.user.name.split(" ")[0]}</Text>
-          <Text style={[styles.roleCaption, dark && styles.mutedDark]}>{roleLabel} · {session.user.role === "doctor" ? "Gestisci i pazienti associati" : "Il tuo aaaa monitoraggio posturale"}</Text>
+          <Text style={[styles.roleCaption, dark && styles.mutedDark]}>{roleLabel} · {session.user.role === "doctor" ? "Gestisci i pazienti associati" : "Il tuo monitoraggio posturale"}</Text>
         </View>
         {session.user.role === "patient" && <PatientDeviceSummary deviceId={monitoredDeviceId} battery={monitoredBattery} />}
+        {session.user.role === "patient" && <MonitoringSectionHeader mode="day" title="Monitoraggio diurno" subtitle="Stato attuale e percentuali dello storico posturale" />}
 
-        {session.user.role === "patient" && (
-          <NightModePanel status={nightStatus} sample={nightSample} clock={nightClock} statusSyncedAt={nightStatusSyncedAt} positionSince={nightPositionSince} busy={nightBusy} error={nightError} onToggle={toggleNightMode} />
-        )}
-
-        {session.user.role === "patient" && nightStatus?.active ? null : session.user.role === "doctor" && !selectedPatient ? (
+        {session.user.role === "doctor" && !selectedPatient ? (
           <DoctorPatientDirectory
             patients={doctorPatients}
             loading={patientsLoading}
@@ -514,6 +511,7 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
             {session.user.role === "doctor" && <MonitoringSectionHeader mode="day" title="Monitoraggio diurno" subtitle="Dati posturali in tempo reale e storico completo" />}
             <View style={[styles.waitingCard, dark && styles.surfaceDark]}><ActivityIndicator color="#087f6a" size="large" /><Text style={[styles.waitingTitle, dark && styles.textDark]}>Nessun dato in tempo reale</Text><Text style={[styles.muted, dark && styles.mutedDark]}>Questo paziente non ha ancora un dispositivo attivo.</Text></View>
             <HistoricalInsights session={session} patient={selectedPatient} />
+            {session.user.role === "patient" && <PatientNightSection status={nightStatus} sample={nightSample} clock={nightClock} statusSyncedAt={nightStatusSyncedAt} positionSince={nightPositionSince} busy={nightBusy} error={nightError} onToggle={toggleNightMode} />}
             {session.user.role === "doctor" && selectedPatient && <DoctorNightSection session={session} patient={selectedPatient} status={nightStatus} sample={nightSample} clock={nightClock} statusSyncedAt={nightStatusSyncedAt} positionSince={nightPositionSince} error={nightError} />}
           </>
         ) : (
@@ -537,6 +535,7 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
               <LineChart data={chartData} width={Math.max(280, width - 56)} height={190} withDots={false} withOuterLines={false} yAxisSuffix="°" chartConfig={{ backgroundGradientFrom: dark ? "#162521" : "#fff", backgroundGradientTo: dark ? "#162521" : "#fff", decimalPlaces: 0, color: (opacity = 1) => `rgba(8,127,106,${opacity})`, labelColor: (opacity = 1) => dark ? `rgba(205,225,219,${opacity})` : `rgba(71,84,103,${opacity})`, propsForBackgroundLines: { stroke: dark ? "#345049" : "#e4eeeb", strokeDasharray: "4 4" } }} bezier style={styles.chart} />
             </View>
             <HistoricalInsights session={session} patient={selectedPatient} />
+            {session.user.role === "patient" && <PatientNightSection status={nightStatus} sample={nightSample} clock={nightClock} statusSyncedAt={nightStatusSyncedAt} positionSince={nightPositionSince} busy={nightBusy} error={nightError} onToggle={toggleNightMode} />}
             {session.user.role === "doctor" && selectedPatient && <DoctorNightSection session={session} patient={selectedPatient} status={nightStatus} sample={nightSample} clock={nightClock} statusSyncedAt={nightStatusSyncedAt} positionSince={nightPositionSince} error={nightError} />}
           </>
         )}
@@ -596,7 +595,7 @@ function NightModePanel({ status, sample, clock, statusSyncedAt, positionSince, 
             <NightStat label="decubito destro" seconds={liveSeconds("right_side", summary?.right_side_seconds ?? 0)} color={NIGHT_POSITIONS.right_side.color} />
             <NightStat label="decubito sinistro" seconds={liveSeconds("left_side", summary?.left_side_seconds ?? 0)} color={NIGHT_POSITIONS.left_side.color} />
           </View>
-          {!readOnly && <View style={styles.nightPieCard}><Text style={styles.nightOverline}>DISTRIBUZIONE PERCENTUALE</Text>{classifiedSeconds > 0 ? <PieChart data={nightPieData} width={Math.max(210, width - 108)} height={190} accessor="percentage" backgroundColor="transparent" paddingLeft="0" style={styles.nightPieChart} chartConfig={{ color: (opacity = 1) => `rgba(255,255,255,${opacity})` }} /> : <Text style={styles.nightPieEmpty}>Il grafico apparirà dopo i primi dati classificati.</Text>}</View>}
+          {!readOnly && <View style={styles.nightPieCard}><Text style={styles.nightOverline}>DISTRIBUZIONE PERCENTUALE</Text>{classifiedSeconds > 0 ? <PieChart data={nightPieData} width={Math.max(270, width - 72)} height={160} accessor="percentage" backgroundColor="transparent" paddingLeft="5" style={styles.nightPieChart} chartConfig={{ color: (opacity = 1) => `rgba(255,255,255,${opacity})` }} /> : <Text style={styles.nightPieEmpty}>Il grafico apparirà dopo i primi dati classificati.</Text>}</View>}
           <View style={styles.nightMeta}><Text style={styles.nightMetaText}>Maglia: {status?.session?.device_id ?? "—"}</Text><Text style={styles.nightMetaText}>Durata: {formatDuration(sessionDuration)}</Text></View>
         </>
       ) : <Text style={styles.nightDescription}>{readOnly ? "La modalità notte non è attiva. Il pannello mostrerà automaticamente i dati quando il paziente avvierà il monitoraggio." : "Attivando questa modalità il tema scuro si abilita automaticamente e i dati vengono inviati alla vista notturna dedicata."}</Text>}
@@ -621,6 +620,10 @@ function MonitoringSectionHeader({ mode, title, subtitle }: { mode: "day" | "nig
       <View style={{ flex: 1 }}><Text style={[styles.monitoringSectionTitle, dark && styles.textDark]}>{title}</Text><Text style={[styles.monitoringSectionSubtitle, dark && styles.mutedDark]}>{subtitle}</Text></View>
     </View>
   );
+}
+
+function PatientNightSection({ status, sample, clock, statusSyncedAt, positionSince, busy, error, onToggle }: { status: NightStatus | null; sample: NightSample | null; clock: number; statusSyncedAt: number; positionSince: number; busy: boolean; error: string; onToggle: () => void }) {
+  return <View style={styles.doctorNightSection}><MonitoringSectionHeader mode="night" title="Monitoraggio notturno" subtitle="Attivazione, posizione corrente e percentuali della sessione" /><NightModePanel status={status} sample={sample} clock={clock} statusSyncedAt={statusSyncedAt} positionSince={positionSince} busy={busy} error={error} onToggle={onToggle} /></View>;
 }
 
 function DoctorNightSection({ session, patient, status, sample, clock, statusSyncedAt, positionSince, error }: { session: Session; patient: DoctorPatient; status: NightStatus | null; sample: NightSample | null; clock: number; statusSyncedAt: number; positionSince: number; error: string }) {
@@ -752,27 +755,12 @@ function HistoricalInsights({ session, patient }: { session: Session; patient: D
   return (
     <>
       <View style={[styles.historyCard, dark && styles.surfaceDark]}>
-        <View style={styles.historyHeading}><View><Text style={[styles.sectionTitle, dark && styles.textDark]}>Storico diurno</Text><Text style={[styles.mutedSmall, dark && styles.mutedDark]}>Posture corrette e scorrette nell'intera finestra selezionata</Text></View>{loading && <ActivityIndicator color="#087f6a" size="small" />}</View>
+        <View style={styles.historyHeading}><View><Text style={[styles.sectionTitle, dark && styles.textDark]}>Storico diurno</Text><Text style={[styles.mutedSmall, dark && styles.mutedDark]}>{session.user.role === "patient" ? "Percentuali di postura nel periodo selezionato" : "Deviazioni pitch e roll nell'intera finestra selezionata"}</Text></View>{loading && <ActivityIndicator color="#087f6a" size="small" />}</View>
         <View style={styles.periodRow}>{HISTORY_PERIODS.map((option) => <Pressable key={option.minutes} onPress={() => setPeriod(option.minutes)} style={[styles.periodButton, period === option.minutes && styles.periodButtonSelected]}><Text style={[styles.periodText, period === option.minutes && styles.periodTextSelected]}>{option.label}</Text></Pressable>)}</View>
-        <View style={styles.historyLegend}><View style={styles.legendItem}><View style={[styles.historyLegendDot, styles.correctDot]} /><Text style={styles.legendText}>Corretta</Text></View><View style={styles.legendItem}><View style={[styles.historyLegendDot, styles.incorrectDot]} /><Text style={styles.legendText}>Scorretta</Text></View></View>
-        <HistoryAxisChart title="Deviazione pitch" samples={chartSamples} period={period} field="pitch_deviation_deg" color="#315f9a" width={Math.max(280, width - 56)} />
-        <HistoryAxisChart title="Deviazione roll" samples={chartSamples} period={period} field="roll_deviation_deg" color="#8b5fbf" width={Math.max(280, width - 56)} />
+        {session.user.role === "doctor" ? <><HistoryAxisChart title="Deviazione pitch" samples={chartSamples} period={period} field="pitch_deviation_deg" color="#315f9a" width={Math.max(280, width - 56)} /><HistoryAxisChart title="Deviazione roll" samples={chartSamples} period={period} field="roll_deviation_deg" color="#8b5fbf" width={Math.max(280, width - 56)} /></> : statistics && <View style={styles.patientHistoryPercentages}><Statistic label="Postura corretta" value={`${statistics.correct_percentage}%`} color="#087f6a" /><Statistic label="Postura scorretta" value={`${statistics.incorrect_percentage}%`} color="#d92d20" /></View>}
         {!loading && history.length === 0 && <Text style={styles.noHistoryText}>Nessun dato disponibile nel periodo selezionato.</Text>}
         {error ? <Text style={styles.formError}>{error}</Text> : null}
       </View>
-
-      {session.user.role === "patient" && statistics && (
-        <View style={[styles.statisticsCard, dark && styles.surfaceDark]}>
-          <Text style={[styles.sectionTitle, dark && styles.textDark]}>Le tue statistiche</Text>
-          <Text style={[styles.mutedSmall, dark && styles.mutedDark]}>Calcolate sul periodo selezionato</Text>
-          <View style={styles.statisticsGrid}>
-            <Statistic label="Postura corretta" value={`${statistics.correct_percentage}%`} color="#087f6a" />
-            <Statistic label="Postura scorretta" value={`${statistics.incorrect_percentage}%`} color="#d92d20" />
-            <Statistic label="Deviazione media" value={`${statistics.average_deviation_deg}°`} color="#315f78" />
-            <Statistic label="Deviazione massima" value={`${statistics.maximum_deviation_deg}°`} color="#b54708" />
-          </View>
-        </View>
-      )}
 
     </>
   );
@@ -784,7 +772,7 @@ function HistoryAxisChart({ title, samples, period, field, color, width }: { tit
     labels: samples.map((sample, index) => index === 0 || index === samples.length - 1 ? formatHistoryLabel(sample.timestamp, period) : ""),
     datasets: [{ data: samples.map((sample) => sample[field]), color: () => color, strokeWidth: 2 }],
   };
-  return <View style={styles.axisChartBlock}><View style={styles.axisChartTitleRow}><View style={[styles.axisChartMarker, { backgroundColor: color }]} /><Text style={[styles.axisChartTitle, dark && styles.textDark]}>{title}</Text></View><LineChart data={data} width={width} height={190} withDots withOuterLines={false} yAxisSuffix="°" getDotColor={(_, index) => samples[index]?.is_incorrect ? "#d92d20" : "#25a995"} chartConfig={{ backgroundGradientFrom: dark ? "#162521" : "#fff", backgroundGradientTo: dark ? "#162521" : "#fff", decimalPlaces: 0, color: () => color, labelColor: (opacity = 1) => dark ? `rgba(205,225,219,${opacity})` : `rgba(71,84,103,${opacity})`, propsForDots: { r: "4", strokeWidth: "1", stroke: dark ? "#162521" : "#fff" }, propsForBackgroundLines: { stroke: dark ? "#345049" : "#e4eeeb", strokeDasharray: "4 4" } }} style={styles.historyChart} /></View>;
+  return <View style={styles.axisChartBlock}><View style={styles.axisChartTitleRow}><View style={[styles.axisChartMarker, { backgroundColor: color }]} /><Text style={[styles.axisChartTitle, dark && styles.textDark]}>{title}</Text></View><LineChart data={data} width={width} height={190} withDots={false} withOuterLines={false} yAxisSuffix="°" chartConfig={{ backgroundGradientFrom: dark ? "#162521" : "#fff", backgroundGradientTo: dark ? "#162521" : "#fff", decimalPlaces: 0, color: () => color, labelColor: (opacity = 1) => dark ? `rgba(205,225,219,${opacity})` : `rgba(71,84,103,${opacity})`, propsForBackgroundLines: { stroke: dark ? "#345049" : "#e4eeeb", strokeDasharray: "4 4" } }} style={styles.historyChart} /></View>;
 }
 
 function Statistic({ label, value, color }: { label: string; value: string; color: string }) {
@@ -1109,6 +1097,6 @@ const styles = StyleSheet.create({
   profileMenu: { backgroundColor: "#fff", borderRadius: 21, paddingHorizontal: 15 }, menuButton: { minHeight: 72, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: 1, borderBottomColor: "#e6efed" }, menuButtonLast: { borderBottomWidth: 0 }, menuButtonPressed: { opacity: 0.65 }, menuIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#dff5f0", alignItems: "center", justifyContent: "center" }, menuIconDanger: { backgroundColor: "#fee9e7" }, menuIconText: { color: "#087f6a", fontSize: 17, fontWeight: "900" }, menuDangerText: { color: "#b42318" }, menuCopy: { flex: 1 }, menuTitle: { color: "#153d35", fontSize: 14, fontWeight: "900" }, menuSubtitle: { color: "#78908a", fontSize: 10, marginTop: 3 }, menuChevron: { color: "#6f9189", fontSize: 26 },
   formCard: { backgroundColor: "#fff", borderRadius: 23, padding: 19 }, passwordHint: { color: "#78908a", fontSize: 10, lineHeight: 15, marginTop: 11 }, settingsCard: { backgroundColor: "#fff", borderRadius: 21, padding: 17, flexDirection: "row", alignItems: "center", gap: 12 }, settingIcon: { width: 45, height: 45, borderRadius: 23, backgroundColor: "#dff5f0", alignItems: "center", justifyContent: "center" }, settingIconText: { color: "#087f6a", fontSize: 22 }, settingCopy: { flex: 1 }, settingTitle: { color: "#153d35", fontSize: 15, fontWeight: "900" }, settingText: { color: "#78908a", fontSize: 10, lineHeight: 15, marginTop: 3 }, soonBadge: { backgroundColor: "#edf4f2", borderRadius: 10, paddingHorizontal: 7, paddingVertical: 5 }, soonText: { color: "#608078", fontSize: 7, fontWeight: "900", letterSpacing: 0.4 }, settingsNote: { color: "#78908a", fontSize: 11, lineHeight: 17, textAlign: "center", paddingHorizontal: 18 },
   historyCard: { backgroundColor: "#fff", borderRadius: 21, paddingTop: 17, overflow: "hidden" }, historyHeading: { minHeight: 38, paddingHorizontal: 17, flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }, periodRow: { flexDirection: "row", gap: 6, paddingHorizontal: 14, marginTop: 14 }, periodButton: { flex: 1, minHeight: 34, borderRadius: 11, borderWidth: 1, borderColor: "#d6e5e1", alignItems: "center", justifyContent: "center", backgroundColor: "#fbfefd" }, periodButtonSelected: { backgroundColor: "#087f6a", borderColor: "#087f6a" }, periodText: { color: "#5d7771", fontSize: 9, fontWeight: "800" }, periodTextSelected: { color: "#fff" }, historyLegend: { flexDirection: "row", justifyContent: "flex-end", gap: 13, paddingHorizontal: 17, marginTop: 12 }, legendItem: { flexDirection: "row", alignItems: "center", gap: 5 }, historyLegendDot: { width: 8, height: 8, borderRadius: 4 }, correctDot: { backgroundColor: "#25a995" }, incorrectDot: { backgroundColor: "#d92d20" }, historyChart: { marginLeft: -13, marginTop: 2 }, axisChartBlock: { borderTopWidth: 1, borderTopColor: "#e4eeeb", marginTop: 13, paddingTop: 13 }, axisChartTitleRow: { flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 17 }, axisChartMarker: { width: 9, height: 9, borderRadius: 5 }, axisChartTitle: { color: "#29433d", fontSize: 12, fontWeight: "900" }, noHistoryText: { color: "#78908a", fontSize: 10, textAlign: "center", paddingHorizontal: 16, paddingBottom: 15, marginTop: -7 },
-  statisticsCard: { backgroundColor: "#fff", borderRadius: 21, padding: 17 }, statisticsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 9, marginTop: 14 }, statisticBox: { width: "48%", flexGrow: 1, minHeight: 82, borderRadius: 15, backgroundColor: "#f3f8f7", padding: 13, justifyContent: "center" }, statisticValue: { fontSize: 22, fontWeight: "900" }, statisticLabel: { color: "#6b817c", fontSize: 10, fontWeight: "700", marginTop: 4 },
+  patientHistoryPercentages: { flexDirection: "row", gap: 9, padding: 14, marginTop: 4 }, statisticBox: { width: "48%", flexGrow: 1, minHeight: 82, borderRadius: 15, backgroundColor: "#f3f8f7", padding: 13, justifyContent: "center" }, statisticValue: { fontSize: 22, fontWeight: "900" }, statisticLabel: { color: "#6b817c", fontSize: 10, fontWeight: "700", marginTop: 4 },
   screenDark: { backgroundColor: "#0d1714" }, headerDark: { backgroundColor: "#13211d", borderBottomColor: "#29433d" }, surfaceDark: { backgroundColor: "#162521", borderColor: "#29433d" }, surfaceDarkAlt: { backgroundColor: "#20332e", borderColor: "#355149" }, textDark: { color: "#e7f4f0" }, mutedDark: { color: "#9eb9b1" }, borderDark: { borderBottomColor: "#29433d" }, inputDark: { backgroundColor: "#20332e", borderColor: "#355149", color: "#e7f4f0" },
 });
