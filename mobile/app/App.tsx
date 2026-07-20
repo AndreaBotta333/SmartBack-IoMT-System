@@ -65,8 +65,8 @@ const HISTORY_PERIODS: { minutes: HistoryPeriod; label: string }[] = [
 const NIGHT_POSITIONS: Record<NightPosition, { label: string; shortLabel: string; color: string }> = {
   supine: { label: "Decubito supino", shortLabel: "Supino", color: "#3ec6ae" },
   prone: { label: "Decubito prono", shortLabel: "Prono", color: "#ef8354" },
-  right_side: { label: "Decubito laterale destro", shortLabel: "Lato destro", color: "#6f9ceb" },
-  left_side: { label: "Decubito laterale sinistro", shortLabel: "Lato sinistro", color: "#b18be8" },
+  right_side: { label: "Lato destro", shortLabel: "Lato destro", color: "#6f9ceb" },
+  left_side: { label: "Lato sinistro", shortLabel: "Lato sinistro", color: "#b18be8" },
   unknown: { label: "Posizione in transizione", shortLabel: "Transizione", color: "#8da39d" },
 };
 const NAME_PATTERN = /^\p{L}+(?:[ '\u2019-]\p{L}+)*$/u;

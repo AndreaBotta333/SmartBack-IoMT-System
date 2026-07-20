@@ -432,3 +432,4 @@ Introdurre una modalità notturna attivabile dal Paziente, mostrare in tempo rea
 - Esteso il grafico di distribuzione delle posizioni all'intera larghezza disponibile.
 - Mantenuto il valore tecnico di affidabilità esclusivamente nel backend e in InfluxDB, senza esporlo nelle interfacce utente.
 - Verificato il comportamento senza maglia assegnata: il backend blocca l'avvio, non crea alcuna sessione notturna e restituisce il messaggio `Nessuna maglia attiva assegnata al paziente`.
+- Uniformata la dicitura della posizione corrente nell'app: `Lato destro` e `Lato sinistro`, coerentemente con i riepiloghi sottostanti.
