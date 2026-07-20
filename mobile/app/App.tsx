@@ -65,8 +65,8 @@ const HISTORY_PERIODS: { minutes: HistoryPeriod; label: string }[] = [
 const NIGHT_POSITIONS: Record<NightPosition, { label: string; shortLabel: string; color: string }> = {
   supine: { label: "supino", shortLabel: "supino", color: "#3ec6ae" },
   prone: { label: "prono", shortLabel: "prono", color: "#ef8354" },
-  right_side: { label: "lato destro", shortLabel: "lato destro", color: "#6f9ceb" },
-  left_side: { label: "lato sinistro", shortLabel: "lato sinistro", color: "#b18be8" },
+  right_side: { label: "decubito destro", shortLabel: "decubito destro", color: "#6f9ceb" },
+  left_side: { label: "decubito sinistro", shortLabel: "decubito sinistro", color: "#b18be8" },
   unknown: { label: "transizione", shortLabel: "transizione", color: "#8da39d" },
 };
 const NAME_PATTERN = /^\p{L}+(?:[ '\u2019-]\p{L}+)*$/u;
@@ -308,6 +308,7 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
   const [nightClock, setNightClock] = useState(Date.now());
   const [nightStatusSyncedAt, setNightStatusSyncedAt] = useState(Date.now());
   const [nightPositionSince, setNightPositionSince] = useState(Date.now());
+  const nightActiveRef = useRef(false);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const visibleSamples = session.user.role === "doctor"
     ? samples.filter((sample) => sample.patient_id === selectedPatient?.patient_code)
@@ -348,12 +349,14 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
       const response = await api<NightStatus>("/api/v1/night-monitoring/status", {}, session.access_token);
       setNightStatus(response);
       setNightStatusSyncedAt(Date.now());
+      if (nightActiveRef.current && !response.active) setDark(false);
+      nightActiveRef.current = response.active;
       setNightError("");
       if (!response.active) setNightSample(null);
     } catch (caught) {
       setNightError(caught instanceof Error ? caught.message : "Impossibile verificare la modalità notte.");
     }
-  }, [session.access_token, session.user.role]);
+  }, [session.access_token, session.user.role, setDark]);
 
   useEffect(() => {
     if (session.user.role !== "patient") return;
@@ -452,8 +455,9 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
       );
       setNightStatus(response);
       setNightStatusSyncedAt(Date.now());
+      nightActiveRef.current = response.active;
       if (response.active) setDark(true);
-      else setNightSample(null);
+      else { setDark(false); setNightSample(null); }
     } catch (caught) {
       const detail = caught instanceof Error ? caught.message : "Operazione non riuscita.";
       setNightError(detail);
@@ -576,8 +580,8 @@ function NightModePanel({ status, sample, clock, statusSyncedAt, positionSince, 
           <View style={styles.nightStatsGrid}>
             <NightStat label="supino" seconds={liveSeconds("supine", summary?.supine_seconds ?? 0)} color={NIGHT_POSITIONS.supine.color} />
             <NightStat label="prono" seconds={liveSeconds("prone", summary?.prone_seconds ?? 0)} color={NIGHT_POSITIONS.prone.color} />
-            <NightStat label="lato destro" seconds={liveSeconds("right_side", summary?.right_side_seconds ?? 0)} color={NIGHT_POSITIONS.right_side.color} />
-            <NightStat label="lato sinistro" seconds={liveSeconds("left_side", summary?.left_side_seconds ?? 0)} color={NIGHT_POSITIONS.left_side.color} />
+            <NightStat label="decubito destro" seconds={liveSeconds("right_side", summary?.right_side_seconds ?? 0)} color={NIGHT_POSITIONS.right_side.color} />
+            <NightStat label="decubito sinistro" seconds={liveSeconds("left_side", summary?.left_side_seconds ?? 0)} color={NIGHT_POSITIONS.left_side.color} />
           </View>
           <View style={styles.nightMeta}><Text style={styles.nightMetaText}>Maglia: {status?.session?.device_id ?? "—"}</Text><Text style={styles.nightMetaText}>Durata: {formatDuration(sessionDuration)}</Text></View>
         </>

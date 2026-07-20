@@ -15,7 +15,7 @@
     {
       "datasource": {"type": "influxdb", "uid": "smartback-influx"},
       "description": "Ultima posizione notturna stabilizzata nella sessione selezionata.",
-      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [{"options": {"0": {"color": "gray", "text": "Non definita"}, "1": {"color": "blue", "text": "Supino"}, "2": {"color": "orange", "text": "Prono"}, "3": {"color": "purple", "text": "Decubito destro"}, "4": {"color": "green", "text": "Decubito sinistro"}}, "type": "value"}], "noValue": "Nessun dato", "thresholds": {"mode": "absolute", "steps": [{"color": "gray", "value": null}]}}, "overrides": []},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [{"options": {"0": {"color": "#8da39d", "text": "Transizione"}, "1": {"color": "#3ec6ae", "text": "Supino"}, "2": {"color": "#ef8354", "text": "Prono"}, "3": {"color": "#6f9ceb", "text": "Decubito destro"}, "4": {"color": "#b18be8", "text": "Decubito sinistro"}}, "type": "value"}], "noValue": "Nessun dato", "thresholds": {"mode": "absolute", "steps": [{"color": "#8da39d", "value": null}]}}, "overrides": []},
       "gridPos": {"h": 4, "w": 12, "x": 0, "y": 0},
       "id": 1,
       "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
@@ -39,7 +39,7 @@
     {
       "datasource": {"type": "influxdb", "uid": "smartback-influx"},
       "description": "Sequenza temporale delle posizioni durante la sessione notturna.",
-      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "custom": {"fillOpacity": 75, "lineWidth": 1, "spanNulls": false}, "mappings": [{"options": {"0": {"color": "gray", "text": "Non definita"}, "1": {"color": "blue", "text": "Supino"}, "2": {"color": "orange", "text": "Prono"}, "3": {"color": "purple", "text": "Decubito destro"}, "4": {"color": "green", "text": "Decubito sinistro"}}, "type": "value"}], "thresholds": {"mode": "absolute", "steps": [{"color": "gray", "value": null}]}}, "overrides": []},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "custom": {"fillOpacity": 75, "lineWidth": 1, "spanNulls": false}, "mappings": [{"options": {"0": {"color": "#8da39d", "text": "Transizione"}, "1": {"color": "#3ec6ae", "text": "Supino"}, "2": {"color": "#ef8354", "text": "Prono"}, "3": {"color": "#6f9ceb", "text": "Decubito destro"}, "4": {"color": "#b18be8", "text": "Decubito sinistro"}}, "type": "value"}], "thresholds": {"mode": "absolute", "steps": [{"color": "#8da39d", "value": null}]}}, "overrides": []},
       "gridPos": {"h": 9, "w": 24, "x": 0, "y": 4},
       "id": 4,
       "options": {"alignValue": "left", "legend": {"displayMode": "hidden", "placement": "bottom", "showLegend": false}, "mergeValues": true, "rowHeight": 0.8, "showValue": "never", "tooltip": {"mode": "single", "sort": "none"}},
@@ -51,7 +51,7 @@
     {
       "datasource": {"type": "influxdb", "uid": "smartback-influx"},
       "description": "Distribuzione indicativa del tempo tra le posizioni rilevate; gli intervalli senza dati oltre 10 secondi vengono esclusi.",
-      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "decimals": 0, "unit": "s"}, "overrides": []},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "decimals": 0, "unit": "s"}, "overrides": [{"matcher": {"id": "byRegexp", "options": ".*supine.*"}, "properties": [{"id": "color", "value": {"fixedColor": "#3ec6ae", "mode": "fixed"}}]}, {"matcher": {"id": "byRegexp", "options": ".*prone.*"}, "properties": [{"id": "color", "value": {"fixedColor": "#ef8354", "mode": "fixed"}}]}, {"matcher": {"id": "byRegexp", "options": ".*right_side.*"}, "properties": [{"id": "color", "value": {"fixedColor": "#6f9ceb", "mode": "fixed"}}]}, {"matcher": {"id": "byRegexp", "options": ".*left_side.*"}, "properties": [{"id": "color", "value": {"fixedColor": "#b18be8", "mode": "fixed"}}]}, {"matcher": {"id": "byRegexp", "options": ".*unknown.*"}, "properties": [{"id": "color", "value": {"fixedColor": "#8da39d", "mode": "fixed"}}]}]},
       "gridPos": {"h": 9, "w": 24, "x": 0, "y": 13},
       "id": 5,
       "options": {"displayLabels": ["name", "percent"], "legend": {"displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"]}, "pieType": "donut", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "tooltip": {"hideZeros": false, "mode": "single", "sort": "none"}},

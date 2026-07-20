@@ -15,7 +15,7 @@
     {
       "datasource": {"type": "influxdb", "uid": "smartback-influx"},
       "description": "Tempo rilevato in posizione supina nell'intervallo selezionato.",
-      "fieldConfig": {"defaults": {"color": {"fixedColor": "blue", "mode": "fixed"}, "decimals": 0, "noValue": "0 s", "unit": "s"}, "overrides": []},
+      "fieldConfig": {"defaults": {"color": {"fixedColor": "#3ec6ae", "mode": "fixed"}, "decimals": 0, "noValue": "0 s", "unit": "s"}, "overrides": []},
       "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}, "id": 1,
       "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
       "pluginVersion": "12.0.2",
@@ -25,7 +25,7 @@
     {
       "datasource": {"type": "influxdb", "uid": "smartback-influx"},
       "description": "Tempo rilevato in posizione prona nell'intervallo selezionato.",
-      "fieldConfig": {"defaults": {"color": {"fixedColor": "orange", "mode": "fixed"}, "decimals": 0, "noValue": "0 s", "unit": "s"}, "overrides": []},
+      "fieldConfig": {"defaults": {"color": {"fixedColor": "#ef8354", "mode": "fixed"}, "decimals": 0, "noValue": "0 s", "unit": "s"}, "overrides": []},
       "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}, "id": 2,
       "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
       "pluginVersion": "12.0.2",
@@ -35,7 +35,7 @@
     {
       "datasource": {"type": "influxdb", "uid": "smartback-influx"},
       "description": "Tempo rilevato sul fianco destro nell'intervallo selezionato.",
-      "fieldConfig": {"defaults": {"color": {"fixedColor": "purple", "mode": "fixed"}, "decimals": 0, "noValue": "0 s", "unit": "s"}, "overrides": []},
+      "fieldConfig": {"defaults": {"color": {"fixedColor": "#6f9ceb", "mode": "fixed"}, "decimals": 0, "noValue": "0 s", "unit": "s"}, "overrides": []},
       "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}, "id": 3,
       "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
       "pluginVersion": "12.0.2",
@@ -45,7 +45,7 @@
     {
       "datasource": {"type": "influxdb", "uid": "smartback-influx"},
       "description": "Tempo rilevato sul fianco sinistro nell'intervallo selezionato.",
-      "fieldConfig": {"defaults": {"color": {"fixedColor": "green", "mode": "fixed"}, "decimals": 0, "noValue": "0 s", "unit": "s"}, "overrides": []},
+      "fieldConfig": {"defaults": {"color": {"fixedColor": "#b18be8", "mode": "fixed"}, "decimals": 0, "noValue": "0 s", "unit": "s"}, "overrides": []},
       "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0}, "id": 4,
       "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
       "pluginVersion": "12.0.2",
@@ -55,7 +55,7 @@
     {
       "datasource": {"type": "influxdb", "uid": "smartback-influx"},
       "description": "Cronologia unificata delle posizioni: consente di leggere direttamente ogni cambio durante la notte.",
-      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "custom": {"fillOpacity": 75, "lineWidth": 1, "spanNulls": false}, "mappings": [{"options": {"0": {"color": "gray", "text": "Non definita"}, "1": {"color": "blue", "text": "Supino"}, "2": {"color": "orange", "text": "Prono"}, "3": {"color": "purple", "text": "Decubito destro"}, "4": {"color": "green", "text": "Decubito sinistro"}}, "type": "value"}], "thresholds": {"mode": "absolute", "steps": [{"color": "gray", "value": null}]}}, "overrides": []},
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "custom": {"fillOpacity": 75, "lineWidth": 1, "spanNulls": false}, "mappings": [{"options": {"0": {"color": "#8da39d", "text": "Transizione"}, "1": {"color": "#3ec6ae", "text": "Supino"}, "2": {"color": "#ef8354", "text": "Prono"}, "3": {"color": "#6f9ceb", "text": "Decubito destro"}, "4": {"color": "#b18be8", "text": "Decubito sinistro"}}, "type": "value"}], "thresholds": {"mode": "absolute", "steps": [{"color": "#8da39d", "value": null}]}}, "overrides": []},
       "gridPos": {"h": 10, "w": 24, "x": 0, "y": 4}, "id": 5,
       "options": {"alignValue": "left", "legend": {"displayMode": "hidden", "placement": "bottom", "showLegend": false}, "mergeValues": true, "rowHeight": 0.8, "showValue": "never", "tooltip": {"mode": "single", "sort": "none"}},
       "pluginVersion": "12.0.2",
@@ -65,7 +65,7 @@
     {
       "datasource": {"type": "influxdb", "uid": "smartback-influx"},
       "description": "Riepilogo percentuale delle posizioni nell'intervallo selezionato.",
-      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "decimals": 0, "unit": "s"}, "overrides": []},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "decimals": 0, "unit": "s"}, "overrides": [{"matcher": {"id": "byRegexp", "options": ".*supine.*"}, "properties": [{"id": "color", "value": {"fixedColor": "#3ec6ae", "mode": "fixed"}}]}, {"matcher": {"id": "byRegexp", "options": ".*prone.*"}, "properties": [{"id": "color", "value": {"fixedColor": "#ef8354", "mode": "fixed"}}]}, {"matcher": {"id": "byRegexp", "options": ".*right_side.*"}, "properties": [{"id": "color", "value": {"fixedColor": "#6f9ceb", "mode": "fixed"}}]}, {"matcher": {"id": "byRegexp", "options": ".*left_side.*"}, "properties": [{"id": "color", "value": {"fixedColor": "#b18be8", "mode": "fixed"}}]}, {"matcher": {"id": "byRegexp", "options": ".*unknown.*"}, "properties": [{"id": "color", "value": {"fixedColor": "#8da39d", "mode": "fixed"}}]}]},
       "gridPos": {"h": 9, "w": 12, "x": 0, "y": 14}, "id": 6,
       "options": {"displayLabels": ["name", "percent"], "legend": {"displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"]}, "pieType": "donut", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "tooltip": {"hideZeros": false, "mode": "single", "sort": "none"}},
       "pluginVersion": "12.0.2",
@@ -75,7 +75,7 @@
     {
       "datasource": {"type": "influxdb", "uid": "smartback-influx"},
       "description": "Tratti non classificabili con sufficiente certezza, utili per valutare qualita e transizioni.",
-      "fieldConfig": {"defaults": {"color": {"fixedColor": "gray", "mode": "fixed"}, "decimals": 0, "noValue": "0 s", "unit": "s"}, "overrides": []},
+      "fieldConfig": {"defaults": {"color": {"fixedColor": "#8da39d", "mode": "fixed"}, "decimals": 0, "noValue": "0 s", "unit": "s"}, "overrides": []},
       "gridPos": {"h": 9, "w": 12, "x": 12, "y": 14}, "id": 7,
       "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
       "pluginVersion": "12.0.2",

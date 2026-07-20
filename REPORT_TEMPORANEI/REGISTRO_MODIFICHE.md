@@ -437,3 +437,6 @@ Introdurre una modalità notturna attivabile dal Paziente, mostrare in tempo rea
 - Resi fluidi i contatori notturni nell'app con aggiornamento ogni secondo, mantenendo un riallineamento periodico con i valori autorevoli del backend.
 - Gestito il cambio posizione in tempo reale: l'incremento locale viene trasferito subito al nuovo stato senza attendere il successivo ciclo di polling di cinque secondi.
 - Resa fluida anche la durata complessiva della sessione notturna.
+- Ripristinate nell'app le diciture `decubito destro` e `decubito sinistro`.
+- Allineati i colori delle posizioni nelle dashboard Grafana ai colori esatti utilizzati nell'app.
+- Impostato il ritorno automatico al tema chiaro quando termina la modalità notte, anche se la chiusura viene rilevata dal successivo aggiornamento dello stato.
