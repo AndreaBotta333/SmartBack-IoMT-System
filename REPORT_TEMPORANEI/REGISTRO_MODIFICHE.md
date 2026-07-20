@@ -515,3 +515,19 @@ Introdurre una modalità notturna attivabile dal Paziente, mostrare in tempo rea
 
 - Controllo TypeScript completato senza errori nel container Expo.
 - Bundle Android Expo generato correttamente con istogramma, menu a tendina e ricerca per data.
+
+## 20 luglio 2026 — Grafico a torta notturno per il Paziente
+
+### Modifiche
+
+- Aggiunto nella pagina Paziente un grafico a torta all'interno della modalità notte attiva.
+- Il grafico mostra la distribuzione percentuale tra posizione supina, prona, decubito destro e decubito sinistro.
+- Colori e diciture sono coerenti con i contatori notturni e con le altre visualizzazioni dell'app.
+- Le percentuali si aggiornano in tempo reale utilizzando gli stessi contatori fluidi mostrati nel pannello.
+- Prima della ricezione dei primi dati classificati viene mostrato uno stato informativo al posto di un grafico vuoto.
+- Il grafico resta esclusivo della pagina Paziente e non viene duplicato nel pannello live consultivo del Medico.
+
+### Verifiche
+
+- Controllo TypeScript completato senza errori nel container Expo.
+- Bundle Android Expo generato correttamente con il nuovo grafico a torta.
