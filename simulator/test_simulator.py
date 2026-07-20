@@ -50,6 +50,10 @@ class SmartShirtSimulatorTests(unittest.TestCase):
         names = {pose_at(second).name for second in range(0, 100, 4)}
         self.assertTrue({"neutral", "forward", "backward", "right"} <= names)
 
+    def test_night_cycle_contains_all_recumbent_positions(self) -> None:
+        names = {pose_at(second, "night-cycle").name for second in range(0, 80, 2)}
+        self.assertTrue({"supine", "prone", "right-side", "left-side"} <= names)
+
     def test_battery_contract_matches_esp_gateway(self) -> None:
         payload = battery_payload(96)
         self.assertEqual(payload["type"], "battery")

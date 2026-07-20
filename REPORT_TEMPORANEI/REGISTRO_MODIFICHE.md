@@ -364,3 +364,61 @@ Rendere gli avatar pertinenti agli utenti visualizzati, permettere la scelta di 
 - Backend ricostruito e riavviato correttamente.
 - Migrazione SQLite verificata: la colonna `avatar_data` è presente e i 7 utenti esistenti sono rimasti invariati.
 - Tutti i container applicativi risultano attivi.
+
+## 20 luglio 2026 — Modalità notte e monitoraggio del decubito
+
+### Obiettivo
+
+Introdurre una modalità notturna attivabile dal Paziente, mostrare in tempo reale supino, prono e decubiti laterali nell'app e nelle dashboard Grafana dedicate, sincronizzando contestualmente il tema scuro.
+
+### Modifiche
+
+- Aggiunto nell'area Paziente il pulsante `MODALITÀ NOTTE`.
+- L'avvio crea una sessione notturna persistente associata al Paziente e alla maglia assegnata; l'arresto la chiude mantenendone lo storico.
+- Reso l'avvio e l'arresto disponibili esclusivamente al Paziente; il Medico associato può consultare i dati senza controllare la sessione.
+- Attivato automaticamente il tema scuro all'avvio della modalità notte.
+- Bloccata la disattivazione manuale del tema nelle Impostazioni finché il monitoraggio notturno è attivo.
+- Sostituita durante la sessione notturna la dashboard posturale diurna con una vista live dedicata.
+- Mostrate nell'app posizione corrente, affidabilità della classificazione, durata della sessione, maglia utilizzata e tempi cumulati supino, prono, lato destro e lato sinistro.
+- Gestiti gli eventi notturni ricevuti in tempo reale tramite il WebSocket già utilizzato dall'app.
+- Aggiunta la classificazione backend indipendente delle posizioni `supine`, `prone`, `right_side`, `left_side` e `unknown` a partire dal vettore di gravità normalizzato.
+- Aggiunti smoothing, isteresi e stabilizzazione temporale per limitare cambi di posizione dovuti a rumore o transizioni brevi.
+- Persistiti i campioni notturni nella measurement InfluxDB separata `night_position`.
+- Evitata la scrittura dei dati notturni nello storico posturale diurno quando una sessione notte è attiva.
+- Aggiunte le dashboard Grafana separate per monitoraggio notturno live e storico notturno.
+- Aggiunti i collegamenti alle dashboard notturne nella Home medica Grafana.
+- Aggiunti endpoint autenticati per avvio, arresto, stato, storico e dettaglio delle sessioni notturne.
+- Aggiunta la commutazione automatica della sola maglia simulata su `night-cycle` all'avvio e su `day-cycle` all'arresto.
+- Confermato che l'ESP32 resta limitato alla trasmissione e non esegue classificazioni o calcoli.
+
+### File principali interessati
+
+- `mobile/app/App.tsx`
+- `backend/app/main.py`
+- `backend/app/database.py`
+- `backend/app/night_service.py`
+- `backend/app/influx_manager.py`
+- `backend/app/mqtt_handler.py`
+- `backend/tests/test_night_monitoring.py`
+- `backend/tests/test_night_service.py`
+- `simulator/simulator.py`
+- `simulator/test_simulator.py`
+- `grafana/dashboards/smartback-night.json`
+- `grafana/dashboards/smartback-night-history.json`
+- `docs/NIGHT_MONITORING.md`
+
+### Verifiche
+
+- Controllo TypeScript completato senza errori.
+- Bundle Android Expo generato correttamente.
+- 35 test backend completati con successo.
+- 7 test del simulatore completati con successo.
+- Verificata la classificazione di supino, prono, decubito destro, decubito sinistro e posizione incerta.
+- Verificata l'autorizzazione Paziente/Medico sugli endpoint notturni.
+- Verificata la commutazione automatica dello scenario per le sole maglie simulate.
+- Validata la sintassi JSON di tutte le dashboard Grafana.
+
+### Note e limiti
+
+- La corrispondenza iniziale degli assi è coerente con il simulatore ma dovrà essere confermata sperimentalmente quando sarà disponibile la smart t-shirt fisica.
+- La classificazione notturna è una misura tecnica della posizione della maglia e non costituisce una diagnosi clinica.

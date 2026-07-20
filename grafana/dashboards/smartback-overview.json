@@ -12,7 +12,7 @@
       "keepTime": false,
       "tags": [],
       "targetBlank": false,
-      "title": "PAZIENTI",
+      "title": "HOME",
       "tooltip": "Torna alla lista dei pazienti",
       "type": "link",
       "url": "/smartback/"
@@ -28,6 +28,30 @@
       "tooltip": "Consulta lo storico persistente del paziente monitorato",
       "type": "link",
       "url": "/grafana/d/smartback-history/smartback-storico-paziente"
+    },
+    {
+      "asDropdown": false,
+      "icon": "moon",
+      "includeVars": true,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": false,
+      "title": "MONITORAGGIO NOTTURNO",
+      "tooltip": "Apri il monitoraggio notturno",
+      "type": "link",
+      "url": "/grafana/d/smartback-night/smartback-monitoraggio-notturno?refresh=1s"
+    },
+    {
+      "asDropdown": false,
+      "icon": "history",
+      "includeVars": true,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": false,
+      "title": "STORICO NOTTURNO",
+      "tooltip": "Apri lo storico notturno",
+      "type": "link",
+      "url": "/grafana/d/smartback-night-history/smartback-storico-notturno"
     }
   ],
   "liveNow": false,
@@ -35,7 +59,7 @@
     {
       "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
       "id": 20,
-      "options": {"code": {"language": "plaintext", "showLineNumbers": false, "showMiniMap": false}, "content": "### Stato smart shirt", "mode": "markdown"},
+      "options": {"code": {"language": "plaintext", "showLineNumbers": false, "showMiniMap": false}, "content": "<h3 style=\"margin:0\">Stato smart shirt</h3>", "mode": "html"},
       "title": "",
       "transparent": true,
       "type": "text"

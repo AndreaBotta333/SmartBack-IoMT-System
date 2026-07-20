@@ -58,6 +58,53 @@ class InfluxManager:
         )
         self.write_api.write(bucket=self.bucket, org=self.org, record=point)
 
+    def persist_night_position(self, sample: dict[str, Any]) -> None:
+        position_codes = {
+            "unknown": 0,
+            "supine": 1,
+            "prone": 2,
+            "right_side": 3,
+            "left_side": 4,
+        }
+        point = (
+            Point("night_position")
+            .tag("session_id", sample["session_id"])
+            .tag("device_id", sample["device_id"])
+            .tag("patient_id", sample["patient_id"])
+            .tag("position", sample["position"])
+            .field("position_code", position_codes.get(sample["position"], 0))
+            .field("confidence", float(sample["confidence"]))
+            .field("x", float(sample["x"]))
+            .field("y", float(sample["y"]))
+            .field("z", float(sample["z"]))
+            .field("classifier_version", int(sample["classifier_version"]))
+            .field("data_gap_seconds", float(sample["data_gap_seconds"]))
+            .time(int(sample["timestamp"]), WritePrecision.MS)
+        )
+        self.write_api.write(bucket=self.bucket, org=self.org, record=point)
+
+    def query_night_positions(self, session_id: str, limit: int = 1200) -> list[dict[str, Any]]:
+        safe_session = self._flux_string(session_id)
+        limit = min(max(limit, 1), 5000)
+        query = f'''from(bucket: "{self.bucket}")
+          |> range(start: 0)
+          |> filter(fn: (r) => r._measurement == "night_position" and r.session_id == "{safe_session}")
+          |> filter(fn: (r) => r._field == "confidence")
+          |> group(columns: ["session_id", "position", "device_id", "patient_id"])
+          |> sort(columns: ["_time"])
+          |> limit(n: {limit})'''
+        tables = self.client.query_api().query(query=query, org=self.org)
+        rows = [
+            {
+                "timestamp": record.get_time().astimezone(timezone.utc).isoformat(),
+                "position": str(record.values.get("position", "unknown")),
+                "confidence": round(float(record.get_value()), 3),
+            }
+            for table in tables
+            for record in table.records
+        ]
+        return sorted(rows, key=lambda item: item["timestamp"])[-limit:]
+
     def persist_calibration_reference(
         self,
         *,

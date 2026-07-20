@@ -38,6 +38,20 @@ type HistorySample = { timestamp: string; deviation_deg: number; posture_status:
 type PatientStatistics = { samples: number; correct_percentage: number; incorrect_percentage: number; average_deviation_deg: number; maximum_deviation_deg: number };
 type MonitoringConfig = { moderate_deviation_deg: number; marked_deviation_deg: number; persistence_seconds: number };
 type HistoryPeriod = 60 | 360 | 1440 | 10080;
+type NightPosition = "supine" | "prone" | "right_side" | "left_side" | "unknown";
+type NightSummary = {
+  supine_seconds: number; prone_seconds: number; right_side_seconds: number;
+  left_side_seconds: number; unknown_seconds: number; position_changes: number; data_gap_seconds: number;
+};
+type NightSession = {
+  id: string; patient_id: string; device_id: string; status: "active" | "completed" | "interrupted";
+  started_at: string; ended_at: string | null; duration_seconds: number; summary: NightSummary;
+};
+type NightStatus = { mode: "day" | "night"; active: boolean; session: NightSession | null };
+type NightSample = {
+  mode: "night"; timestamp: number; session_id: string; patient_id: string; device_id: string;
+  position: NightPosition; candidate_position: NightPosition; confidence: number; data_gap_seconds: number;
+};
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000";
 const WS_URL = process.env.EXPO_PUBLIC_WS_URL ?? "ws://localhost:8000/ws/wearable";
@@ -48,6 +62,13 @@ const HISTORY_PERIODS: { minutes: HistoryPeriod; label: string }[] = [
   { minutes: 60, label: "1 ora" }, { minutes: 360, label: "6 ore" },
   { minutes: 1440, label: "24 ore" }, { minutes: 10080, label: "7 giorni" },
 ];
+const NIGHT_POSITIONS: Record<NightPosition, { label: string; shortLabel: string; color: string }> = {
+  supine: { label: "Decubito supino", shortLabel: "Supino", color: "#3ec6ae" },
+  prone: { label: "Decubito prono", shortLabel: "Prono", color: "#ef8354" },
+  right_side: { label: "Decubito laterale destro", shortLabel: "Lato destro", color: "#6f9ceb" },
+  left_side: { label: "Decubito laterale sinistro", shortLabel: "Lato sinistro", color: "#b18be8" },
+  unknown: { label: "Posizione in transizione", shortLabel: "Transizione", color: "#8da39d" },
+};
 const NAME_PATTERN = /^\p{L}+(?:[ '\u2019-]\p{L}+)*$/u;
 const EMAIL_PATTERN = /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,63}$/i;
 const PASSWORD_NUMBER_PATTERN = /\d/;
@@ -267,7 +288,7 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (session: Session) =
 }
 
 function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; onSessionUpdate: (session: Session) => void; onLogout: () => void }) {
-  const { dark } = useAppTheme();
+  const { dark, setDark } = useAppTheme();
   const { width } = useWindowDimensions();
   const [screen, setScreen] = useState<AppScreen>("dashboard");
   const [samples, setSamples] = useState<PostureSample[]>([]);
@@ -280,6 +301,10 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
   const [associationOpen, setAssociationOpen] = useState(false);
   const [patientsLoading, setPatientsLoading] = useState(session.user.role === "doctor");
   const [associating, setAssociating] = useState(false);
+  const [nightStatus, setNightStatus] = useState<NightStatus | null>(null);
+  const [nightSample, setNightSample] = useState<NightSample | null>(null);
+  const [nightBusy, setNightBusy] = useState(false);
+  const [nightError, setNightError] = useState("");
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const visibleSamples = session.user.role === "doctor"
     ? samples.filter((sample) => sample.patient_id === selectedPatient?.patient_code)
@@ -314,6 +339,29 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
 
   useEffect(() => { loadDoctorPatients(); }, [loadDoctorPatients]);
 
+  const loadNightStatus = useCallback(async () => {
+    if (session.user.role !== "patient") return;
+    try {
+      const response = await api<NightStatus>("/api/v1/night-monitoring/status", {}, session.access_token);
+      setNightStatus(response);
+      setNightError("");
+      if (!response.active) setNightSample(null);
+    } catch (caught) {
+      setNightError(caught instanceof Error ? caught.message : "Impossibile verificare la modalità notte.");
+    }
+  }, [session.access_token, session.user.role]);
+
+  useEffect(() => {
+    if (session.user.role !== "patient") return;
+    loadNightStatus();
+    const interval = setInterval(loadNightStatus, 5000);
+    return () => clearInterval(interval);
+  }, [loadNightStatus, session.user.role]);
+
+  useEffect(() => {
+    if (nightStatus?.active && !dark) setDark(true);
+  }, [dark, nightStatus?.active, setDark]);
+
   useEffect(() => {
     let active = true;
     let socket: WebSocket | null = null;
@@ -323,8 +371,12 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
       socket.onopen = () => { if (active) setMessage(""); };
       socket.onmessage = (event) => {
         try {
-          const sample = JSON.parse(event.data) as PostureSample;
-          if (typeof sample.deviation_deg === "number") setSamples((current) => [...current.slice(-(MAX_SAMPLES - 1)), sample]);
+          const payload = JSON.parse(event.data) as PostureSample | NightSample;
+          if ("mode" in payload && payload.mode === "night") {
+            if (session.user.role === "patient" && payload.patient_id === session.user.patient_code) setNightSample(payload);
+          } else if ("deviation_deg" in payload && typeof payload.deviation_deg === "number") {
+            setSamples((current) => [...current.slice(-(MAX_SAMPLES - 1)), payload]);
+          }
         } catch { setMessage("Dato ricevuto non valido."); }
       };
       socket.onerror = () => socket?.close();
@@ -336,7 +388,7 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
     }
     connect();
     return () => { active = false; if (reconnectTimer.current) clearTimeout(reconnectTimer.current); socket?.close(); };
-  }, []);
+  }, [session.user.patient_code, session.user.role]);
 
   const chartData = useMemo(() => ({
     labels: visibleSamples.map((_, index) => index === 0 || index === visibleSamples.length - 1 ? `${index + 1}` : ""),
@@ -373,6 +425,27 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
     finally { setCalibrating(false); }
   }
 
+  async function toggleNightMode() {
+    if (session.user.role !== "patient" || nightBusy) return;
+    const stopping = Boolean(nightStatus?.active);
+    setNightBusy(true); setNightError("");
+    try {
+      const response = await api<NightStatus>(
+        stopping ? "/api/v1/night-monitoring/stop" : "/api/v1/night-monitoring/start",
+        { method: "POST" }, session.access_token,
+      );
+      setNightStatus(response);
+      if (response.active) setDark(true);
+      else setNightSample(null);
+    } catch (caught) {
+      const detail = caught instanceof Error ? caught.message : "Operazione non riuscita.";
+      setNightError(detail);
+      Alert.alert(stopping ? "Arresto non riuscito" : "Attivazione non riuscita", detail);
+    } finally {
+      setNightBusy(false);
+    }
+  }
+
   const roleLabel = session.user.role === "doctor" ? "Medico" : "Paziente";
 
   return (
@@ -390,7 +463,7 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
       ) : screen === "password" ? (
         <ChangePasswordScreen token={session.access_token} onBack={() => setScreen("profile")} />
       ) : screen === "settings" ? (
-        <SettingsScreen onBack={() => setScreen("profile")} />
+        <SettingsScreen nightModeActive={Boolean(nightStatus?.active)} onBack={() => setScreen("profile")} />
       ) : (
       <ScrollView style={dark && styles.screenDark} contentContainerStyle={styles.dashboardContent}>
         <View>
@@ -398,7 +471,11 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
           <Text style={[styles.roleCaption, dark && styles.mutedDark]}>{roleLabel} · {session.user.role === "doctor" ? "Gestisci i pazienti associati" : "Il tuo monitoraggio posturale"}</Text>
         </View>
 
-        {session.user.role === "doctor" && !selectedPatient ? (
+        {session.user.role === "patient" && (
+          <NightModePanel status={nightStatus} sample={nightSample} busy={nightBusy} error={nightError} onToggle={toggleNightMode} />
+        )}
+
+        {session.user.role === "patient" && nightStatus?.active ? null : session.user.role === "doctor" && !selectedPatient ? (
           <DoctorPatientDirectory
             patients={doctorPatients}
             loading={patientsLoading}
@@ -450,6 +527,46 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
       )}
     </SafeAreaView>
   );
+}
+
+function NightModePanel({ status, sample, busy, error, onToggle }: { status: NightStatus | null; sample: NightSample | null; busy: boolean; error: string; onToggle: () => void }) {
+  const { dark } = useAppTheme();
+  const active = Boolean(status?.active);
+  const position = NIGHT_POSITIONS[sample?.position ?? "unknown"];
+  const summary = status?.session?.summary;
+  return (
+    <View style={[styles.nightCard, active && styles.nightCardActive, dark && styles.nightCardDark]}>
+      <View style={styles.nightHeader}>
+        <View style={styles.nightMoon}><Text style={styles.nightMoonText}>☾</Text></View>
+        <View style={{ flex: 1 }}><Text style={styles.nightTitle}>Modalità notte</Text><Text style={styles.nightSubtitle}>{active ? "Monitoraggio notturno in corso" : "Rileva la posizione durante il riposo"}</Text></View>
+        {active && <View style={styles.nightLiveBadge}><View style={styles.nightLiveDot} /><Text style={styles.nightLiveText}>LIVE</Text></View>}
+      </View>
+      {active ? (
+        <>
+          <View style={styles.nightPositionBox}>
+            <Text style={styles.nightOverline}>POSIZIONE ATTUALE</Text>
+            <Text style={[styles.nightPosition, { color: position.color }]}>{position.label}</Text>
+            <Text style={styles.nightConfidence}>{sample ? `Affidabilità ${Math.round(sample.confidence * 100)}%` : "In attesa del primo dato…"}</Text>
+          </View>
+          <View style={styles.nightStatsGrid}>
+            <NightStat label="Supino" seconds={summary?.supine_seconds ?? 0} color={NIGHT_POSITIONS.supine.color} />
+            <NightStat label="Prono" seconds={summary?.prone_seconds ?? 0} color={NIGHT_POSITIONS.prone.color} />
+            <NightStat label="Lato destro" seconds={summary?.right_side_seconds ?? 0} color={NIGHT_POSITIONS.right_side.color} />
+            <NightStat label="Lato sinistro" seconds={summary?.left_side_seconds ?? 0} color={NIGHT_POSITIONS.left_side.color} />
+          </View>
+          <View style={styles.nightMeta}><Text style={styles.nightMetaText}>Maglia: {status?.session?.device_id ?? "—"}</Text><Text style={styles.nightMetaText}>Durata: {formatDuration(status?.session?.duration_seconds ?? 0)}</Text></View>
+        </>
+      ) : <Text style={styles.nightDescription}>Attivando questa modalità il tema scuro si abilita automaticamente e i dati vengono inviati alla vista notturna dedicata.</Text>}
+      {error ? <Text style={styles.nightError}>{error}</Text> : null}
+      <Pressable disabled={busy || !status} onPress={onToggle} style={({ pressed }) => [styles.nightButton, active && styles.nightStopButton, pressed && styles.pressed]}>
+        {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.nightButtonText}>{active ? "TERMINA MODALITÀ NOTTE" : "MODALITÀ NOTTE"}</Text>}
+      </Pressable>
+    </View>
+  );
+}
+
+function NightStat({ label, seconds, color }: { label: string; seconds: number; color: string }) {
+  return <View style={styles.nightStat}><View style={[styles.nightStatDot, { backgroundColor: color }]} /><Text style={styles.nightStatValue}>{formatDuration(seconds)}</Text><Text style={styles.nightStatLabel}>{label}</Text></View>;
 }
 
 function HistoricalInsights({ session, patient }: { session: Session; patient: DoctorPatient | null }) {
@@ -743,15 +860,15 @@ function ChangePasswordScreen({ token, onBack }: { token: string; onBack: () => 
   );
 }
 
-function SettingsScreen({ onBack }: { onBack: () => void }) {
+function SettingsScreen({ nightModeActive, onBack }: { nightModeActive: boolean; onBack: () => void }) {
   const { dark, setDark } = useAppTheme();
   return (
     <ScrollView style={dark && styles.screenDark} contentContainerStyle={styles.pageContent}>
       <PageHeading title="Impostazioni" subtitle="Personalizza la tua esperienza" onBack={onBack} />
       <View style={[styles.settingsCard, dark && styles.surfaceDark]}>
         <View style={styles.settingIcon}><Text style={styles.settingIconText}>☼</Text></View>
-        <View style={styles.settingCopy}><Text style={[styles.settingTitle, dark && styles.textDark]}>Tema scuro</Text><Text style={[styles.settingText, dark && styles.mutedDark]}>Riduce la luminosità dell'interfaccia e usa superfici scure.</Text></View>
-        <Switch accessibilityLabel="Attiva tema scuro" value={dark} onValueChange={setDark} trackColor={{ false: "#b9ccc7", true: "#4ba996" }} thumbColor={dark ? "#d7fff6" : "#fff"} />
+        <View style={styles.settingCopy}><Text style={[styles.settingTitle, dark && styles.textDark]}>Tema scuro</Text><Text style={[styles.settingText, dark && styles.mutedDark]}>{nightModeActive ? "Attivo automaticamente durante la modalità notte." : "Riduce la luminosità dell'interfaccia e usa superfici scure."}</Text></View>
+        <Switch accessibilityLabel="Attiva tema scuro" disabled={nightModeActive} value={dark} onValueChange={setDark} trackColor={{ false: "#b9ccc7", true: "#4ba996" }} thumbColor={dark ? "#d7fff6" : "#fff"} />
       </View>
       <Text style={[styles.settingsNote, dark && styles.mutedDark]}>La preferenza viene conservata sul dispositivo anche dopo la chiusura dell'app.</Text>
     </ScrollView>
@@ -862,6 +979,15 @@ function formatHistoryLabel(timestamp: string, period: HistoryPeriod) {
 }
 
 function formatSigned(value: number) { return `${value > 0 ? "+" : ""}${value.toFixed(1)}°`; }
+function formatDuration(seconds: number) {
+  const total = Math.max(0, Math.round(seconds));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const remainingSeconds = total % 60;
+  if (hours) return `${hours}h ${minutes}m`;
+  if (minutes) return `${minutes}m ${remainingSeconds}s`;
+  return `${remainingSeconds}s`;
+}
 
 function isValidFiscalCode(value: string) {
   const code = value.toUpperCase().replace(/\s/g, "");
@@ -906,6 +1032,7 @@ const styles = StyleSheet.create({
   whiteCard: { backgroundColor: "#fff", borderRadius: 21, paddingTop: 17, overflow: "hidden" }, sectionHeading: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", paddingHorizontal: 17 }, sectionTitle: { color: "#153d35", fontSize: 16, fontWeight: "900" }, mutedSmall: { color: "#78908a", fontSize: 10, marginTop: 3 }, legendDot: { flexDirection: "row", alignItems: "center", gap: 5 }, miniDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#087f6a" }, legendText: { color: "#78908a", fontSize: 9 }, chart: { marginLeft: -13, marginTop: 8 },
   infoGrid: { flexDirection: "row", gap: 9 }, infoCard: { flex: 1, backgroundColor: "#fff", borderRadius: 16, padding: 13, flexDirection: "row", alignItems: "center", gap: 9 }, infoIcon: { color: "#20a38c", fontSize: 20 }, infoValue: { color: "#153d35", fontWeight: "800", fontSize: 12, marginTop: 3 },
   notificationCard: { backgroundColor: "#dff5f0", borderRadius: 17, padding: 14, flexDirection: "row", alignItems: "center", gap: 12 }, bellCircle: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#b9e9df", alignItems: "center", justifyContent: "center" }, bell: { color: "#087f6a", fontSize: 17 }, notificationTitle: { color: "#153d35", fontWeight: "900", fontSize: 13 }, notificationText: { color: "#56766f", fontSize: 10, lineHeight: 15, marginTop: 2 }, message: { color: "#42655f", textAlign: "center", fontSize: 11 }, disclaimer: { color: "#8ba09b", textAlign: "center", fontSize: 9, marginTop: 4 },
+  nightCard: { borderRadius: 24, padding: 18, backgroundColor: "#16233a", borderWidth: 1, borderColor: "#2d4163", gap: 15, shadowColor: "#07101f", shadowOpacity: 0.18, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 4 }, nightCardActive: { borderColor: "#3d806f" }, nightCardDark: { backgroundColor: "#111d2d", borderColor: "#294b46" }, nightHeader: { flexDirection: "row", alignItems: "center", gap: 11 }, nightMoon: { width: 43, height: 43, borderRadius: 22, backgroundColor: "#243b60", alignItems: "center", justifyContent: "center" }, nightMoonText: { color: "#c8dcff", fontSize: 28, lineHeight: 31 }, nightTitle: { color: "#f1f6ff", fontSize: 18, fontWeight: "900" }, nightSubtitle: { color: "#9eb0cc", fontSize: 10, marginTop: 3 }, nightLiveBadge: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#173c34", borderRadius: 12, paddingHorizontal: 9, paddingVertical: 6 }, nightLiveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#3ec6ae" }, nightLiveText: { color: "#75e0cc", fontSize: 8, fontWeight: "900", letterSpacing: 0.8 }, nightDescription: { color: "#b2bfd2", fontSize: 11, lineHeight: 17 }, nightPositionBox: { backgroundColor: "#101a2b", borderRadius: 18, padding: 17, alignItems: "center", borderWidth: 1, borderColor: "#263a5a" }, nightOverline: { color: "#7e91af", fontSize: 8, fontWeight: "900", letterSpacing: 1 }, nightPosition: { fontSize: 23, fontWeight: "900", marginTop: 7, textAlign: "center" }, nightConfidence: { color: "#9eb0cc", fontSize: 9, marginTop: 5 }, nightStatsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 }, nightStat: { width: "48%", flexGrow: 1, minHeight: 66, backgroundColor: "#101a2b", borderRadius: 14, padding: 11, borderWidth: 1, borderColor: "#263750" }, nightStatDot: { width: 7, height: 7, borderRadius: 4, position: "absolute", top: 11, right: 11 }, nightStatValue: { color: "#f1f6ff", fontSize: 16, fontWeight: "900" }, nightStatLabel: { color: "#8fa1bd", fontSize: 9, marginTop: 4 }, nightMeta: { flexDirection: "row", justifyContent: "space-between", gap: 10 }, nightMetaText: { color: "#9eb0cc", fontSize: 9, fontWeight: "700" }, nightError: { color: "#ffb4a8", fontSize: 10, lineHeight: 15 }, nightButton: { minHeight: 50, borderRadius: 15, backgroundColor: "#087f6a", alignItems: "center", justifyContent: "center", paddingHorizontal: 14 }, nightStopButton: { backgroundColor: "#a33d3d" }, nightButtonText: { color: "#fff", fontSize: 12, fontWeight: "900", letterSpacing: 0.6 },
   associationDropdown: { backgroundColor: "#fff", borderRadius: 21, padding: 17, borderWidth: 1, borderColor: "#cfe4df", shadowColor: "#0a4c40", shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 3 }, associateButton: { minHeight: 47, borderRadius: 14, backgroundColor: "#087f6a", alignItems: "center", justifyContent: "center", marginTop: 13 },
   addPatientButton: { minHeight: 52, borderRadius: 16, borderWidth: 1.5, borderColor: "#087f6a", backgroundColor: "#fff", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, marginTop: 3 }, addPatientButtonOpen: { backgroundColor: "#e2f5f1", borderColor: "#5bb8a8" }, addPatientPlus: { color: "#087f6a", fontSize: 27, lineHeight: 28, fontWeight: "500" }, addPatientPlusOpen: { fontSize: 25 }, addPatientText: { color: "#087f6a", fontSize: 14, fontWeight: "900" }, addPatientTextOpen: { color: "#356c62" },
   directoryHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 5 }, directoryTitle: { color: "#153d35", fontSize: 19, fontWeight: "900" }, countBadge: { minWidth: 25, height: 25, paddingHorizontal: 7, borderRadius: 13, backgroundColor: "#cceee7", alignItems: "center", justifyContent: "center" }, countText: { color: "#087f6a", fontSize: 11, fontWeight: "900" },

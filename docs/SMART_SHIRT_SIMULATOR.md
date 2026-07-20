@@ -62,6 +62,7 @@ Configurare in `.env`:
 
 ```env
 SIMULATION_SCENARIO=day-cycle
+# Alternative per il monitoraggio notturno: night-cycle
 ```
 
 Scenari disponibili:

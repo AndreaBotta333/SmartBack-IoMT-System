@@ -79,6 +79,33 @@ def init_database(path: str) -> sqlite3.Connection:
             ON device_assignments(device_id) WHERE released_at IS NULL;
         CREATE UNIQUE INDEX IF NOT EXISTS idx_active_assignment_patient
             ON device_assignments(patient_id) WHERE released_at IS NULL;
+        CREATE TABLE IF NOT EXISTS night_monitoring_sessions (
+            id TEXT PRIMARY KEY,
+            patient_id TEXT NOT NULL,
+            device_id TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('active', 'completed', 'interrupted')),
+            started_at TEXT NOT NULL,
+            ended_at TEXT,
+            end_reason TEXT,
+            created_by TEXT NOT NULL,
+            classifier_version INTEGER NOT NULL DEFAULT 1,
+            supine_seconds REAL NOT NULL DEFAULT 0,
+            prone_seconds REAL NOT NULL DEFAULT 0,
+            right_side_seconds REAL NOT NULL DEFAULT 0,
+            left_side_seconds REAL NOT NULL DEFAULT 0,
+            unknown_seconds REAL NOT NULL DEFAULT 0,
+            position_changes INTEGER NOT NULL DEFAULT 0,
+            data_gap_seconds REAL NOT NULL DEFAULT 0,
+            FOREIGN KEY(patient_id) REFERENCES users(id),
+            FOREIGN KEY(device_id) REFERENCES devices(device_id),
+            FOREIGN KEY(created_by) REFERENCES users(id)
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_active_night_session_patient
+            ON night_monitoring_sessions(patient_id) WHERE status='active';
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_active_night_session_device
+            ON night_monitoring_sessions(device_id) WHERE status='active';
+        CREATE INDEX IF NOT EXISTS idx_night_sessions_patient_started
+            ON night_monitoring_sessions(patient_id, started_at DESC);
     """)
     _migrate_users(connection)
     _migrate_monitoring_configs(connection)

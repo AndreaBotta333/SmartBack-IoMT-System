@@ -12,7 +12,7 @@
       "keepTime": false,
       "tags": [],
       "targetBlank": false,
-      "title": "PAZIENTI",
+      "title": "HOME",
       "tooltip": "Torna alla lista dei pazienti",
       "type": "link",
       "url": "/smartback/"
@@ -28,6 +28,30 @@
       "tooltip": "Apri la dashboard in tempo reale",
       "type": "link",
       "url": "/grafana/d/smartback-overview/smartback-monitoraggio-paziente?refresh=1s"
+    },
+    {
+      "asDropdown": false,
+      "icon": "moon",
+      "includeVars": true,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": false,
+      "title": "MONITORAGGIO NOTTURNO",
+      "tooltip": "Apri il monitoraggio notturno",
+      "type": "link",
+      "url": "/grafana/d/smartback-night/smartback-monitoraggio-notturno?refresh=1s"
+    },
+    {
+      "asDropdown": false,
+      "icon": "history",
+      "includeVars": true,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": false,
+      "title": "STORICO NOTTURNO",
+      "tooltip": "Apri lo storico notturno",
+      "type": "link",
+      "url": "/grafana/d/smartback-night-history/smartback-storico-notturno"
     }
   ],
   "liveNow": false,

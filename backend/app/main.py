@@ -29,6 +29,7 @@ from app.config import (
 from app.database import init_database
 from app.influx_manager import InfluxManager
 from app.mqtt_handler import SmartBackMqttHandler
+from app.night_service import NightPositionEngine
 from app.posture_service import PostureEngine, ThresholdProfile
 EMAIL_DOMAIN_PATTERN = re.compile(
     r"^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,63}$",
@@ -41,6 +42,7 @@ websockets: set[WebSocket] = set()
 influx_manager: InfluxManager | None = None
 posture_engine: PostureEngine | None = None
 mqtt_handler: SmartBackMqttHandler | None = None
+night_engine: NightPositionEngine | None = None
 auth_db: sqlite3.Connection | None = None
 pending_grafana_calibrations: dict[tuple[str, str], dict[str, Any]] = {}
 database_lock = threading.RLock()
@@ -555,14 +557,53 @@ def simulated_device_ids() -> list[str]:
     if auth_db is None:
         return []
     rows = auth_db.execute(
-        "SELECT device_id FROM devices WHERE source_type='simulated' ORDER BY device_id"
+        "SELECT device_id FROM devices "
+        "WHERE source_type='simulated' AND archived_at IS NULL ORDER BY device_id"
     ).fetchall()
     return [str(row["device_id"]) for row in rows]
 
 
+def active_night_session_for_sample(
+    device_id: str, patient_code: str
+) -> dict[str, str] | None:
+    if auth_db is None:
+        return None
+    row = auth_db.execute(
+        "SELECT nights.id,nights.patient_id,nights.device_id "
+        "FROM night_monitoring_sessions nights "
+        "JOIN users patients ON patients.id=nights.patient_id "
+        "WHERE nights.status='active' AND nights.device_id=? AND patients.patient_code=?",
+        (device_id, patient_code),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def update_night_summary(
+    session_id: str, position: str, elapsed_seconds: float, changed: bool
+) -> None:
+    if auth_db is None or elapsed_seconds <= 0:
+        return
+    columns = {
+        "supine": "supine_seconds",
+        "prone": "prone_seconds",
+        "right_side": "right_side_seconds",
+        "left_side": "left_side_seconds",
+        "unknown": "unknown_seconds",
+        "data_gap": "data_gap_seconds",
+    }
+    column = columns.get(position, "unknown_seconds")
+    with database_lock:
+        auth_db.execute(
+            f"UPDATE night_monitoring_sessions SET {column}={column}+?, "
+            "position_changes=position_changes+? WHERE id=? AND status='active'",
+            (elapsed_seconds, 1 if changed else 0, session_id),
+        )
+        auth_db.commit()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global mqtt_handler, influx_manager, posture_engine, auth_db
+    global mqtt_handler, influx_manager, posture_engine, night_engine, auth_db
     loop = asyncio.get_running_loop()
     auth_db = init_database(AUTH_DB_PATH)
     ensure_grafana_admin()
@@ -578,6 +619,12 @@ async def lifespan(app: FastAPI):
         hysteresis_deg=POSTURE_HYSTERESIS_DEG,
         calibration_provider=stored_calibration_for_device,
     )
+    night_engine = NightPositionEngine(
+        session_provider=active_night_session_for_sample,
+        summary_updater=update_night_summary,
+        persister=influx_manager.persist_night_position,
+        gap_seconds=DATA_STALE_SECONDS,
+    )
     mqtt_handler = SmartBackMqttHandler(
         host=MQTT_HOST,
         port=MQTT_PORT,
@@ -591,6 +638,7 @@ async def lifespan(app: FastAPI):
         device_seen=register_seen_device,
         assignment_provider=active_device_assignments,
         simulated_device_provider=simulated_device_ids,
+        night_engine=night_engine,
     )
     mqtt_handler.start(loop)
     yield
@@ -1026,7 +1074,7 @@ def medical_portal_page(
     async function request(url,options={{}}){{const r=await fetch(url,{{...options,headers:{{"Content-Type":"application/json",...(options.headers||{{}})}}}});if(r.status===401)location.href="/grafana-login";if(!r.ok){{const b=await r.json().catch(()=>({{}}));throw Error(b.detail||"Operazione non riuscita")}}return r.status===204?null:r.json()}}
     async function load(){{state=await request("/api/v1/grafana/home");render()}}
     function render(){{const s=state.summary;stats.innerHTML=[["Pazienti",s.patients],["Magliette totali",s.devices_total],["Disponibili",s.devices_available],["Assegnate",s.devices_assigned]].map(x=>`<div class="stat"><span class="muted">${{x[0]}}</span><b>${{x[1]}}</b></div>`).join("");
-    patients.innerHTML=state.patients.length?state.patients.map(p=>{{const code=encodeURIComponent(p.patient_code);const free=state.devices.filter(d=>d.available);return `<article class="card"><h3>${{esc(p.name)}}</h3><div class="muted">${{esc(p.patient_code)}}</div><p>${{p.assigned_device?`<span class="badge assigned">Maglia ${{esc(p.assigned_device)}}</span>`:'<span class="badge">Nessuna maglia</span>'}}</p><div class="actions"><a class="button" href="/grafana/d/smartback-overview/smartback-monitoraggio-paziente?var-patient_id=${{code}}&refresh=1s">Monitoraggio live</a><a class="button" href="/grafana/d/smartback-history/smartback-storico-paziente?var-patient_id=${{code}}">Storico</a></div>${{!p.assigned_device&&free.length?`<div class="actions"><select id="shirt-${{esc(p.id)}}">${{free.map(d=>`<option value="${{esc(d.device_id)}}">${{esc(d.display_name)}}</option>`).join('')}}</select><button onclick="assign('${{esc(p.id)}}','${{esc(p.patient_code)}}')">Assegna maglia</button></div>`:''}}<div class="actions"><button class="danger" onclick="removePatient('${{esc(p.patient_code)}}','${{esc(p.name)}}')">Rimuovi paziente</button></div></article>`}}).join(""):'<div class="card muted">Nessun paziente associato. Usa “Aggiungi paziente” per iniziare.</div>';
+    patients.innerHTML=state.patients.length?state.patients.map(p=>{{const code=encodeURIComponent(p.patient_code);const free=state.devices.filter(d=>d.available);return `<article class="card"><h3>${{esc(p.name)}}</h3><div class="muted">${{esc(p.patient_code)}}</div><p>${{p.assigned_device?`<span class="badge assigned">Maglia ${{esc(p.assigned_device)}}</span>`:'<span class="badge">Nessuna maglia</span>'}}</p><div class="actions"><a class="button" href="/grafana/d/smartback-overview/smartback-monitoraggio-paziente?var-patient_id=${{code}}&refresh=1s">Monitoraggio live</a><a class="button" href="/grafana/d/smartback-history/smartback-storico-paziente?var-patient_id=${{code}}">Storico diurno</a><a class="button secondary" href="/grafana/d/smartback-night/smartback-monitoraggio-notturno?var-patient_id=${{code}}&refresh=1s">Monitoraggio notturno</a><a class="button secondary" href="/grafana/d/smartback-night-history/smartback-storico-notturno?var-patient_id=${{code}}">Storico notturno</a></div>${{!p.assigned_device&&free.length?`<div class="actions"><select id="shirt-${{esc(p.id)}}">${{free.map(d=>`<option value="${{esc(d.device_id)}}">${{esc(d.display_name)}}</option>`).join('')}}</select><button onclick="assign('${{esc(p.id)}}','${{esc(p.patient_code)}}')">Assegna maglia</button></div>`:''}}<div class="actions"><button class="danger" onclick="removePatient('${{esc(p.patient_code)}}','${{esc(p.name)}}')">Rimuovi paziente</button></div></article>`}}).join(""):'<div class="card muted">Nessun paziente associato. Usa “Aggiungi paziente” per iniziare.</div>';
     devices.innerHTML=state.devices.length?state.devices.map(d=>`<article class="device"><h3>${{esc(d.display_name)}}</h3><div class="muted">${{esc(d.device_id)}}</div><p><span class="badge ${{d.has_telemetry?'available':''}}">${{d.has_telemetry?'Connessa':'Non connessa'}}</span> <span class="badge ${{d.available?'available':'assigned'}}">${{d.available?'Disponibile':'Assegnata'}}</span></p>${{d.patient_name?`<div>Assegnata a: <b>${{esc(d.patient_name)}}</b></div>`:''}}<div class="actions">${{!d.available&&d.patient_name!=='Altro paziente'?`<button class="danger" onclick="releaseShirt('${{esc(d.device_id)}}')">Libera maglia</button>`:''}}<button class="danger" onclick="removeDevice('${{esc(d.device_id)}}','${{esc(d.display_name)}}')">Rimuovi maglia</button></div></article>`).join(""):'<div class="device muted">Nessuna maglia registrata.</div>'}}
     async function assign(patientId,patientCode){{const device=document.getElementById('shirt-'+patientId).value;await request('/api/v1/grafana/devices/'+encodeURIComponent(device)+'/assignment',{{method:'PUT',body:JSON.stringify({{patient_code:patientCode}})}});await load()}}
     async function releaseShirt(device){{if(!confirm('Liberare questa maglia? Lo storico precedente resterà associato al paziente.'))return;await request('/api/v1/grafana/devices/'+encodeURIComponent(device)+'/assignment',{{method:'DELETE'}});await load()}}
@@ -1363,6 +1411,177 @@ def query_posture_history(patient_code: str, minutes: int, limit: int = 600) -> 
         threshold_profile_for_patient_code(patient_code),
         limit,
     )
+
+
+def _night_session_duration_seconds(row: sqlite3.Row) -> int:
+    started_at = datetime.fromisoformat(str(row["started_at"]))
+    ended_at = (
+        datetime.fromisoformat(str(row["ended_at"]))
+        if row["ended_at"]
+        else datetime.now(timezone.utc)
+    )
+    return max(0, round((ended_at - started_at).total_seconds()))
+
+
+def serialize_night_session(row: sqlite3.Row) -> dict[str, Any]:
+    """Stable API contract for a night-monitoring session."""
+    return {
+        "id": row["id"],
+        "patient_id": row["patient_id"],
+        "device_id": row["device_id"],
+        "status": row["status"],
+        "started_at": row["started_at"],
+        "ended_at": row["ended_at"],
+        "end_reason": row["end_reason"],
+        "duration_seconds": _night_session_duration_seconds(row),
+        "classifier_version": int(row["classifier_version"]),
+        "summary": {
+            "supine_seconds": float(row["supine_seconds"]),
+            "prone_seconds": float(row["prone_seconds"]),
+            "right_side_seconds": float(row["right_side_seconds"]),
+            "left_side_seconds": float(row["left_side_seconds"]),
+            "unknown_seconds": float(row["unknown_seconds"]),
+            "position_changes": int(row["position_changes"]),
+            "data_gap_seconds": float(row["data_gap_seconds"]),
+        },
+    }
+
+
+def active_night_session(patient_id: str) -> sqlite3.Row | None:
+    return auth_db.execute(
+        "SELECT * FROM night_monitoring_sessions "
+        "WHERE patient_id=? AND status='active' ORDER BY started_at DESC LIMIT 1",
+        (patient_id,),
+    ).fetchone()
+
+
+def _require_patient(user: sqlite3.Row) -> None:
+    if user["role"] != "patient":
+        raise HTTPException(
+            status_code=403,
+            detail="La modalità notturna può essere attivata o fermata solo dal paziente",
+        )
+
+
+@app.post("/api/v1/night-monitoring/start", status_code=201)
+def start_night_monitoring(user: sqlite3.Row = Depends(current_user)):
+    _require_patient(user)
+    now = datetime.now(timezone.utc).isoformat()
+    with database_lock:
+        if active_night_session(user["id"]) is not None:
+            raise HTTPException(status_code=409, detail="Monitoraggio notturno già attivo")
+        assignment = auth_db.execute(
+            "SELECT assignments.device_id,devices.source_type FROM device_assignments assignments "
+            "JOIN devices ON devices.device_id=assignments.device_id "
+            "WHERE assignments.patient_id=? AND assignments.released_at IS NULL "
+            "AND devices.archived_at IS NULL LIMIT 1",
+            (user["id"],),
+        ).fetchone()
+        if assignment is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Nessuna maglia attiva assegnata al paziente",
+            )
+        sortable_start = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        session_id = f"night_{sortable_start}_{secrets.token_hex(6)}"
+        try:
+            auth_db.execute(
+                "INSERT INTO night_monitoring_sessions("
+                "id,patient_id,device_id,status,started_at,created_by) "
+                "VALUES (?,?,?,'active',?,?)",
+                (session_id, user["id"], assignment["device_id"], now, user["id"]),
+            )
+            auth_db.commit()
+        except sqlite3.IntegrityError:
+            auth_db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="La maglia è già impegnata in un monitoraggio notturno",
+            ) from None
+    session = auth_db.execute(
+        "SELECT * FROM night_monitoring_sessions WHERE id=?", (session_id,)
+    ).fetchone()
+    if assignment["source_type"] == "simulated" and mqtt_handler:
+        mqtt_handler.publish_simulation_scenario(str(assignment["device_id"]), "night-cycle")
+    return {"mode": "night", "active": True, "session": serialize_night_session(session)}
+
+
+@app.post("/api/v1/night-monitoring/stop")
+def stop_night_monitoring(user: sqlite3.Row = Depends(current_user)):
+    _require_patient(user)
+    with database_lock:
+        session = active_night_session(user["id"])
+        if session is None:
+            raise HTTPException(status_code=409, detail="Nessun monitoraggio notturno attivo")
+        ended_at = datetime.now(timezone.utc).isoformat()
+        auth_db.execute(
+            "UPDATE night_monitoring_sessions SET status='completed',ended_at=?,end_reason='patient' "
+            "WHERE id=? AND status='active'",
+            (ended_at, session["id"]),
+        )
+        auth_db.commit()
+    completed = auth_db.execute(
+        "SELECT * FROM night_monitoring_sessions WHERE id=?", (session["id"],)
+    ).fetchone()
+    device = auth_db.execute(
+        "SELECT source_type FROM devices WHERE device_id=?", (session["device_id"],)
+    ).fetchone()
+    if device and device["source_type"] == "simulated" and mqtt_handler:
+        mqtt_handler.publish_simulation_scenario(str(session["device_id"]), "day-cycle")
+    return {"mode": "day", "active": False, "session": serialize_night_session(completed)}
+
+
+@app.get("/api/v1/night-monitoring/status")
+def night_monitoring_status(
+    patient_id: str | None = None,
+    user: sqlite3.Row = Depends(current_user),
+):
+    patient = accessible_patient(user, patient_id)
+    session = active_night_session(patient["id"])
+    return {
+        "mode": "night" if session else "day",
+        "active": session is not None,
+        "session": serialize_night_session(session) if session else None,
+    }
+
+
+@app.get("/api/v1/night-monitoring/history")
+def night_monitoring_history(
+    patient_id: str | None = None,
+    limit: int = 50,
+    user: sqlite3.Row = Depends(current_user),
+):
+    patient = accessible_patient(user, patient_id)
+    normalized_limit = min(max(limit, 1), 200)
+    rows = auth_db.execute(
+        "SELECT * FROM night_monitoring_sessions WHERE patient_id=? "
+        "ORDER BY started_at DESC LIMIT ?",
+        (patient["id"], normalized_limit),
+    ).fetchall()
+    return {
+        "patient_id": patient["id"],
+        "patient_code": patient["patient_code"],
+        "items": [serialize_night_session(row) for row in rows],
+        "count": len(rows),
+    }
+
+
+@app.get("/api/v1/night-monitoring/sessions/{session_id}")
+def night_monitoring_session(
+    session_id: str,
+    user: sqlite3.Row = Depends(current_user),
+):
+    row = auth_db.execute(
+        "SELECT * FROM night_monitoring_sessions WHERE id=?", (session_id,)
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Sessione notturna non trovata")
+    accessible_patient(user, row["patient_id"])
+    result = serialize_night_session(row)
+    result["positions"] = (
+        influx_manager.query_night_positions(session_id) if influx_manager else []
+    )
+    return result
 
 
 def normalize_history_range(

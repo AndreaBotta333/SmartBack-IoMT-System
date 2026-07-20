@@ -11,6 +11,7 @@ import paho.mqtt.client as mqtt
 
 from app.device_contract import NormalizedDeviceStatus, NormalizedPostureSample
 from app.influx_manager import InfluxManager
+from app.night_service import NightPositionEngine
 from app.posture_service import PostureEngine
 
 
@@ -36,6 +37,7 @@ class SmartBackMqttHandler:
         device_seen: DeviceSeenCallback | None = None,
         assignment_provider: AssignmentProvider | None = None,
         simulated_device_provider: SimulatedDeviceProvider | None = None,
+        night_engine: NightPositionEngine | None = None,
     ) -> None:
         self.host = host
         self.port = port
@@ -49,6 +51,7 @@ class SmartBackMqttHandler:
         self.device_seen = device_seen
         self.assignment_provider = assignment_provider
         self.simulated_device_provider = simulated_device_provider
+        self.night_engine = night_engine
 
         self._lock = threading.RLock()
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -165,6 +168,17 @@ class SmartBackMqttHandler:
             retain=True,
         )
 
+    def publish_simulation_scenario(self, device_id: str, scenario: str) -> None:
+        """Switch only the development emulator; physical shirts ignore this topic."""
+        if self._client is None:
+            return
+        self._client.publish(
+            f"smartback/config/simulation-scenarios/{device_id}",
+            json.dumps({"device_id": device_id, "scenario": scenario}),
+            qos=1,
+            retain=True,
+        )
+
     def _on_message(self, client: mqtt.Client, userdata: Any, message: mqtt.MQTTMessage) -> None:
         try:
             raw_payload = json.loads(message.payload.decode("utf-8"))
@@ -173,13 +187,28 @@ class SmartBackMqttHandler:
                 if self.device_seen:
                     self.device_seen(str(payload["device_id"]), str(payload["quality"]))
                 self._mark_stream_active(client, payload)
-                processed = self.posture_engine.process(payload)
-                self.influx.persist_posture(processed)
-                self._publish_posture_transition(client, processed)
-                with self._lock:
-                    self._latest_posture = processed
-                if self._loop:
-                    asyncio.run_coroutine_threadsafe(self.broadcast(processed), self._loop)
+                night_sample = (
+                    self.night_engine.process(payload)
+                    if self.night_engine is not None
+                    else None
+                )
+                if night_sample is not None:
+                    # Daytime posture and night orientation are mutually exclusive.
+                    # Stop feeding live/day history while the patient selected night mode.
+                    with self._lock:
+                        self._latest_posture = None
+                    if self._loop:
+                        asyncio.run_coroutine_threadsafe(
+                            self.broadcast({"mode": "night", **night_sample}), self._loop
+                        )
+                else:
+                    processed = self.posture_engine.process(payload)
+                    self.influx.persist_posture(processed)
+                    self._publish_posture_transition(client, processed)
+                    with self._lock:
+                        self._latest_posture = processed
+                    if self._loop:
+                        asyncio.run_coroutine_threadsafe(self.broadcast(processed), self._loop)
             elif message.topic == self.device_topic:
                 payload = NormalizedDeviceStatus.model_validate(raw_payload).model_dump()
                 if self.device_seen:

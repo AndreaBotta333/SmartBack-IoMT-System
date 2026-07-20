@@ -64,6 +64,16 @@ DAY_CYCLE = (
     (12.0, Pose("marked-forward", 25.0, 0.0)),
 )
 
+NIGHT_CYCLE = (
+    (20.0, Pose("prone", 90.0, 0.0)),
+    (4.0, Pose("transition", 0.0, 0.0)),
+    (16.0, Pose("right-side", 0.0, 90.0)),
+    (4.0, Pose("transition", 0.0, 0.0)),
+    (16.0, Pose("left-side", 0.0, -90.0)),
+    (4.0, Pose("transition", 0.0, 0.0)),
+    (12.0, Pose("supine", -90.0, 0.0)),
+)
+
 
 def pose_at(elapsed: float, scenario_name: str = SCENARIO_NAME) -> Pose:
     """Return a reproducible posture for the selected scenario."""
@@ -75,15 +85,16 @@ def pose_at(elapsed: float, scenario_name: str = SCENARIO_NAME) -> Pose:
             float(os.getenv("SIMULATOR_PITCH_DEG", "0")),
             float(os.getenv("SIMULATOR_ROLL_DEG", "0")),
         )
-    if scenario_name != "day-cycle":
+    cycle = NIGHT_CYCLE if scenario_name == "night-cycle" else DAY_CYCLE
+    if scenario_name not in {"day-cycle", "night-cycle"}:
         raise ValueError(f"Unsupported SIMULATION_SCENARIO={scenario_name!r}")
 
-    position = elapsed % sum(duration for duration, _ in DAY_CYCLE)
-    for duration, pose in DAY_CYCLE:
+    position = elapsed % sum(duration for duration, _ in cycle)
+    for duration, pose in cycle:
         if position < duration:
             return pose
         position -= duration
-    return DAY_CYCLE[-1][1]
+    return cycle[-1][1]
 
 
 def gravity_vector(pitch_deg: float, roll_deg: float) -> tuple[float, float, float]:
@@ -192,7 +203,11 @@ def publish(client: Any, device_id: str, packet_id: str, payload: dict) -> None:
         raise OSError(f"MQTT publish failed with rc={info.rc}")
 
 
-def connect(configured_devices: set[str], devices_lock: threading.RLock) -> Any:
+def connect(
+    configured_devices: set[str],
+    device_scenarios: dict[str, str],
+    devices_lock: threading.RLock,
+) -> Any:
     mqtt = mqtt_module()
     client = mqtt.Client(
         mqtt.CallbackAPIVersion.VERSION2,
@@ -200,17 +215,26 @@ def connect(configured_devices: set[str], devices_lock: threading.RLock) -> Any:
     )
     def on_connect(connected, _userdata, _flags, reason_code, _properties):
         if reason_code == 0:
-            connected.subscribe("smartback/config/simulated-devices/+", qos=1)
+            connected.subscribe([
+                ("smartback/config/simulated-devices/+", 1),
+                ("smartback/config/simulation-scenarios/+", 1),
+            ])
 
     def on_message(_client, _userdata, message):
         try:
             payload = json.loads(message.payload.decode("utf-8"))
             device_id = str(payload["device_id"])
             with devices_lock:
-                if payload.get("active"):
+                if message.topic.startswith("smartback/config/simulation-scenarios/"):
+                    scenario = str(payload["scenario"])
+                    if scenario not in {"day-cycle", "night-cycle", "neutral", "manual"}:
+                        raise ValueError(f"Scenario non supportato: {scenario}")
+                    device_scenarios[device_id] = scenario
+                elif payload.get("active"):
                     configured_devices.add(device_id)
                 else:
                     configured_devices.discard(device_id)
+                    device_scenarios.pop(device_id, None)
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             print(f"Configurazione simulatore non valida: {exc}", flush=True)
 
@@ -245,8 +269,9 @@ def main() -> None:
     signal.signal(signal.SIGINT, request_stop)
 
     configured_devices = {DEVICE_ID} if DEVICE_ID else set()
+    device_scenarios: dict[str, str] = {}
     devices_lock = threading.RLock()
-    client = connect(configured_devices, devices_lock)
+    client = connect(configured_devices, device_scenarios, devices_lock)
     started = time.monotonic()
     runtimes: dict[str, dict[str, Any]] = {}
 
@@ -263,6 +288,7 @@ def main() -> None:
             elapsed_ms = int(elapsed * 1000)
             with devices_lock:
                 active_devices = set(configured_devices)
+                active_scenarios = dict(device_scenarios)
             for removed in set(runtimes) - active_devices:
                 del runtimes[removed]
                 print(f"Emulatore {removed} disattivato", flush=True)
@@ -284,7 +310,10 @@ def main() -> None:
                     runtime["next_battery"] = now + BATTERY_INTERVAL_SECONDS
                 if now < runtime["next_packet"]:
                     continue
-                pose = pose_at(elapsed + len(runtimes) * 3)
+                pose = pose_at(
+                    elapsed + len(runtimes) * 3,
+                    active_scenarios.get(device_id, SCENARIO_NAME),
+                )
                 sample_number = runtime["sample_number"]
                 drop_packet = (
                     DROP_EVERY_N_PACKETS > 0

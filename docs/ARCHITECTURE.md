@@ -28,8 +28,9 @@ Simulatore Python ───┘                              │
    accelerometro, batteria, perdita dati e stato del sistema.
 4. **Logica e archiviazione**: FastAPI valida nuovamente il contratto, calcola
    orientamento/deviazione/alert, salva le serie elaborate in InfluxDB e usa
-   SQLite per utenti, sessioni, associazioni medico-paziente, inventario delle
-   magliette e storico delle loro assegnazioni.
+   SQLite per utenti, sessioni di autenticazione e monitoraggio notturno,
+   associazioni medico-paziente, inventario delle magliette e storico delle
+   loro assegnazioni.
 5. **Utenti finali**: l'app usa REST e WebSocket. Grafana legge InfluxDB ed e
    raggiungibile attraverso un gateway che accetta soltanto sessioni SmartBack
    appartenenti a medici verificati.
@@ -46,6 +47,22 @@ entro l'intervallo temporale selezionato e associati alla relativa sessione di
 monitoraggio. La sessione inizia con il primo campione valido, oppure con la
 ripresa successiva a un'interruzione dichiarata dal watchdog. Gli alert storici
 privi di identificativo sono conservati come `Sessione precedente`.
+
+## Monitoraggio notturno
+
+Il paziente attiva esplicitamente la modalita notturna; il medico puo
+consultarne le sessioni e i riepiloghi ma non controllarne l'avvio. SQLite
+conserva identita, maglia usata, stato e riepilogo di ogni sessione. InfluxDB
+ospitera la serie temporale delle posizioni `supino`, `prono`, `decubito
+destro`, `decubito sinistro` e `sconosciuto`.
+
+La sessione resta aperta durante brevi assenze di telemetria: una disconnessione
+non deve essere interpretata come fine del sonno. Il contratto iniziale e gli
+endpoint sono descritti in `docs/NIGHT_MONITORING.md`.
+
+Grafana espone una dashboard medica notturna separata, filtrabile per paziente
+e sessione. Legge la measurement InfluxDB `night_position`; l'attivazione della
+modalita resta invece responsabilita esclusiva del paziente tramite API/app.
 
 ## Portale medico e assegnazione delle magliette
 
