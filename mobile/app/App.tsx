@@ -36,8 +36,8 @@ type DeviceStatus = { device_id: string; state_of_charge?: number; charging?: bo
 type AppScreen = "dashboard" | "profile" | "password" | "settings";
 type HistorySample = { timestamp: string; deviation_deg: number; posture_status: PostureStatus; is_incorrect: boolean };
 type PatientStatistics = { samples: number; correct_percentage: number; incorrect_percentage: number; average_deviation_deg: number; maximum_deviation_deg: number };
-type MonitoringConfig = { moderate_deviation_deg: number; marked_deviation_deg: number; persistence_seconds: number };
 type HistoryPeriod = 60 | 360 | 1440 | 10080;
+type NightHistoryPeriod = 7 | 30 | 90 | 0;
 type NightPosition = "supine" | "prone" | "right_side" | "left_side" | "unknown";
 type NightSummary = {
   supine_seconds: number; prone_seconds: number; right_side_seconds: number;
@@ -344,30 +344,34 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
   useEffect(() => { loadDoctorPatients(); }, [loadDoctorPatients]);
 
   const loadNightStatus = useCallback(async () => {
-    if (session.user.role !== "patient") return;
+    if (session.user.role === "doctor" && !selectedPatient) {
+      setNightStatus(null);
+      setNightSample(null);
+      return;
+    }
     try {
-      const response = await api<NightStatus>("/api/v1/night-monitoring/status", {}, session.access_token);
+      const patientQuery = session.user.role === "doctor" ? `?patient_id=${encodeURIComponent(selectedPatient!.id)}` : "";
+      const response = await api<NightStatus>(`/api/v1/night-monitoring/status${patientQuery}`, {}, session.access_token);
       setNightStatus(response);
       setNightStatusSyncedAt(Date.now());
-      if (nightActiveRef.current && !response.active) setDark(false);
+      if (session.user.role === "patient" && nightActiveRef.current && !response.active) setDark(false);
       nightActiveRef.current = response.active;
       setNightError("");
       if (!response.active) setNightSample(null);
     } catch (caught) {
       setNightError(caught instanceof Error ? caught.message : "Impossibile verificare la modalità notte.");
     }
-  }, [session.access_token, session.user.role, setDark]);
+  }, [selectedPatient, session.access_token, session.user.role, setDark]);
 
   useEffect(() => {
-    if (session.user.role !== "patient") return;
     loadNightStatus();
     const interval = setInterval(loadNightStatus, 5000);
     return () => clearInterval(interval);
-  }, [loadNightStatus, session.user.role]);
+  }, [loadNightStatus]);
 
   useEffect(() => {
-    if (nightStatus?.active && !dark) setDark(true);
-  }, [dark, nightStatus?.active, setDark]);
+    if (session.user.role === "patient" && nightStatus?.active && !dark) setDark(true);
+  }, [dark, nightStatus?.active, session.user.role, setDark]);
 
   useEffect(() => {
     if (!nightStatus?.active) return;
@@ -387,7 +391,8 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
         try {
           const payload = JSON.parse(event.data) as PostureSample | NightSample;
           if ("mode" in payload && payload.mode === "night") {
-            if (session.user.role === "patient" && payload.patient_id === session.user.patient_code) {
+            const monitoredPatientCode = session.user.role === "doctor" ? selectedPatient?.patient_code : session.user.patient_code;
+            if (payload.patient_id === monitoredPatientCode) {
               setNightSample((current) => {
                 if (current?.position !== payload.position) setNightPositionSince(Date.now());
                 return payload;
@@ -407,7 +412,7 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
     }
     connect();
     return () => { active = false; if (reconnectTimer.current) clearTimeout(reconnectTimer.current); socket?.close(); };
-  }, [session.user.patient_code, session.user.role]);
+  }, [selectedPatient?.patient_code, session.user.patient_code, session.user.role]);
 
   const chartData = useMemo(() => ({
     labels: visibleSamples.map((_, index) => index === 0 || index === visibleSamples.length - 1 ? `${index + 1}` : ""),
@@ -511,14 +516,17 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
         ) : !latest || !posture ? (
           <>
             {session.user.role === "doctor" && <Pressable onPress={() => setSelectedPatient(null)} style={styles.patientStrip}><Text style={styles.backArrow}>‹</Text><View style={{ flex: 1 }}><Text style={styles.overline}>PAZIENTE SELEZIONATO</Text><Text style={styles.patientName}>{selectedPatient?.name}</Text></View><Text style={styles.patientCode}>{selectedPatient?.patient_code}</Text></Pressable>}
+            {session.user.role === "doctor" && <MonitoringSectionHeader mode="day" title="Monitoraggio diurno" subtitle="Dati posturali in tempo reale e storico completo" />}
             <View style={[styles.waitingCard, dark && styles.surfaceDark]}><ActivityIndicator color="#087f6a" size="large" /><Text style={[styles.waitingTitle, dark && styles.textDark]}>Nessun dato in tempo reale</Text><Text style={[styles.muted, dark && styles.mutedDark]}>Questo paziente non ha ancora un dispositivo attivo.</Text></View>
             <HistoricalInsights session={session} patient={selectedPatient} />
+            {session.user.role === "doctor" && selectedPatient && <DoctorNightSection session={session} patient={selectedPatient} status={nightStatus} sample={nightSample} clock={nightClock} statusSyncedAt={nightStatusSyncedAt} positionSince={nightPositionSince} error={nightError} />}
           </>
         ) : (
           <>
             {session.user.role === "doctor" && (
               <Pressable onPress={() => setSelectedPatient(null)} style={styles.patientStrip}><Text style={styles.backArrow}>‹</Text><View style={{ flex: 1 }}><Text style={styles.overline}>PAZIENTE SELEZIONATO</Text><Text style={styles.patientName}>{selectedPatient?.name}</Text></View><Text style={styles.patientCode}>{selectedPatient?.patient_code}</Text></Pressable>
             )}
+            {session.user.role === "doctor" && <MonitoringSectionHeader mode="day" title="Monitoraggio diurno" subtitle="Dati posturali in tempo reale e storico completo" />}
             <View style={[styles.postureCard, { backgroundColor: posture.pale }]}>
               <View style={styles.postureTop}><UserAvatar user={monitoredUser} size={43} accentColor={posture.color} /><View style={{ flex: 1 }}><Text style={[styles.postureLabel, { color: posture.color }]}>{posture.label}</Text><Text style={styles.postureDetail}>{posture.detail}</Text></View></View>
               <View style={styles.deviationRow}><Text style={styles.deviationCaption}>DEVIAZIONE DAL RIFERIMENTO</Text><Text style={[styles.deviationValue, { color: posture.color }]}>{formatSigned(latest.deviation_deg)}</Text></View>
@@ -537,20 +545,21 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
               <InfoCard icon="▣" label="Dispositivo" value={latest.device_id} />
               <InfoCard icon="ϟ" label="Batteria" value={device?.state_of_charge != null ? `${Math.round(device.state_of_charge)}%` : "—"} />
             </View>
+            {session.user.role === "doctor" && selectedPatient && <DoctorNightSection session={session} patient={selectedPatient} status={nightStatus} sample={nightSample} clock={nightClock} statusSyncedAt={nightStatusSyncedAt} positionSince={nightPositionSince} error={nightError} />}
             {session.user.role === "patient" && (
               <Pressable onPress={calibrate} disabled={calibrating} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>{calibrating ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Calibra postura di riferimento</Text>}</Pressable>
             )}
           </>
         )}
         {message ? <Text style={styles.message}>{message}</Text> : null}
-        <Text style={styles.disclaimer}>Soglie dimostrative, non validate per uso clinico.</Text>
+        {session.user.role === "patient" && <Text style={styles.disclaimer}>Soglie dimostrative, non validate per uso clinico.</Text>}
       </ScrollView>
       )}
     </SafeAreaView>
   );
 }
 
-function NightModePanel({ status, sample, clock, statusSyncedAt, positionSince, busy, error, onToggle }: { status: NightStatus | null; sample: NightSample | null; clock: number; statusSyncedAt: number; positionSince: number; busy: boolean; error: string; onToggle: () => void }) {
+function NightModePanel({ status, sample, clock, statusSyncedAt, positionSince, busy, error, onToggle, readOnly = false }: { status: NightStatus | null; sample: NightSample | null; clock: number; statusSyncedAt: number; positionSince: number; busy: boolean; error: string; onToggle: () => void; readOnly?: boolean }) {
   const { dark } = useAppTheme();
   const active = Boolean(status?.active);
   const position = NIGHT_POSITIONS[sample?.position ?? "unknown"];
@@ -585,17 +594,85 @@ function NightModePanel({ status, sample, clock, statusSyncedAt, positionSince, 
           </View>
           <View style={styles.nightMeta}><Text style={styles.nightMetaText}>Maglia: {status?.session?.device_id ?? "—"}</Text><Text style={styles.nightMetaText}>Durata: {formatDuration(sessionDuration)}</Text></View>
         </>
-      ) : <Text style={styles.nightDescription}>Attivando questa modalità il tema scuro si abilita automaticamente e i dati vengono inviati alla vista notturna dedicata.</Text>}
+      ) : <Text style={styles.nightDescription}>{readOnly ? "La modalità notte non è attiva. Il pannello mostrerà automaticamente i dati quando il paziente avvierà il monitoraggio." : "Attivando questa modalità il tema scuro si abilita automaticamente e i dati vengono inviati alla vista notturna dedicata."}</Text>}
       {error ? <Text style={styles.nightError}>{error}</Text> : null}
-      <Pressable disabled={busy || !status} onPress={onToggle} style={({ pressed }) => [styles.nightButton, active && styles.nightStopButton, pressed && styles.pressed]}>
+      {!readOnly && <Pressable disabled={busy || !status} onPress={onToggle} style={({ pressed }) => [styles.nightButton, active && styles.nightStopButton, pressed && styles.pressed]}>
         {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.nightButtonText}>{active ? "TERMINA MODALITÀ NOTTE" : "MODALITÀ NOTTE"}</Text>}
-      </Pressable>
+      </Pressable>}
     </View>
   );
 }
 
 function NightStat({ label, seconds, color }: { label: string; seconds: number; color: string }) {
   return <View style={styles.nightStat}><View style={[styles.nightStatDot, { backgroundColor: color }]} /><Text style={styles.nightStatValue}>{formatDuration(seconds)}</Text><Text style={styles.nightStatLabel}>{label}</Text></View>;
+}
+
+function MonitoringSectionHeader({ mode, title, subtitle }: { mode: "day" | "night"; title: string; subtitle: string }) {
+  const { dark } = useAppTheme();
+  const night = mode === "night";
+  return (
+    <View style={[styles.monitoringSectionHeader, night ? styles.monitoringSectionNight : styles.monitoringSectionDay, dark && styles.monitoringSectionHeaderDark]}>
+      <View style={[styles.monitoringSectionIcon, night ? styles.monitoringSectionIconNight : styles.monitoringSectionIconDay]}><Text style={styles.monitoringSectionIconText}>{night ? "☾" : "☀"}</Text></View>
+      <View style={{ flex: 1 }}><Text style={[styles.monitoringSectionTitle, dark && styles.textDark]}>{title}</Text><Text style={[styles.monitoringSectionSubtitle, dark && styles.mutedDark]}>{subtitle}</Text></View>
+    </View>
+  );
+}
+
+function DoctorNightSection({ session, patient, status, sample, clock, statusSyncedAt, positionSince, error }: { session: Session; patient: DoctorPatient; status: NightStatus | null; sample: NightSample | null; clock: number; statusSyncedAt: number; positionSince: number; error: string }) {
+  return (
+    <View style={styles.doctorNightSection}>
+      <MonitoringSectionHeader mode="night" title="Monitoraggio notturno" subtitle="Stato live e storico delle sessioni del paziente" />
+      <NightModePanel status={status} sample={sample} clock={clock} statusSyncedAt={statusSyncedAt} positionSince={positionSince} busy={false} error={error} onToggle={() => undefined} readOnly />
+      <NightHistoryPanel session={session} patient={patient} refreshKey={`${status?.session?.id ?? "none"}:${status?.active ?? false}`} />
+    </View>
+  );
+}
+
+function NightHistoryPanel({ session, patient, refreshKey }: { session: Session; patient: DoctorPatient; refreshKey: string }) {
+  const { dark } = useAppTheme();
+  const [period, setPeriod] = useState<NightHistoryPeriod>(30);
+  const [sessions, setSessions] = useState<NightSession[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const loadHistory = useCallback(async () => {
+    setLoading(true); setError("");
+    try {
+      const response = await api<{ items: NightSession[] }>(`/api/v1/night-monitoring/history?patient_id=${encodeURIComponent(patient.id)}&limit=200`, {}, session.access_token);
+      setSessions(response.items);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Impossibile caricare lo storico notturno.");
+    } finally {
+      setLoading(false);
+    }
+  }, [patient.id, refreshKey, session.access_token]);
+
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const visibleSessions = useMemo(() => {
+    if (period === 0) return sessions;
+    const cutoff = Date.now() - period * 24 * 60 * 60 * 1000;
+    return sessions.filter((item) => Date.parse(item.started_at) >= cutoff);
+  }, [period, sessions]);
+
+  return (
+    <View style={[styles.nightHistoryCard, dark && styles.surfaceDark]}>
+      <View style={styles.historyHeading}><View><Text style={[styles.sectionTitle, dark && styles.textDark]}>Storico notturno</Text><Text style={[styles.mutedSmall, dark && styles.mutedDark]}>Tutte le sessioni nella finestra selezionata</Text></View>{loading && <ActivityIndicator color="#6f9ceb" size="small" />}</View>
+      <View style={styles.periodRow}>{([{ value: 7, label: "7 giorni" }, { value: 30, label: "30 giorni" }, { value: 90, label: "90 giorni" }, { value: 0, label: "Tutto" }] as { value: NightHistoryPeriod; label: string }[]).map((option) => <Pressable key={option.value} onPress={() => setPeriod(option.value)} style={[styles.periodButton, styles.nightPeriodButton, period === option.value && styles.nightPeriodButtonSelected]}><Text style={[styles.periodText, period === option.value && styles.periodTextSelected]}>{option.label}</Text></Pressable>)}</View>
+      {!loading && visibleSessions.length === 0 ? <Text style={styles.nightHistoryEmpty}>Nessuna sessione notturna nel periodo selezionato.</Text> : visibleSessions.map((item) => {
+        const summary = item.summary;
+        const positions = [
+          { label: "supino", value: summary.supine_seconds, color: NIGHT_POSITIONS.supine.color },
+          { label: "prono", value: summary.prone_seconds, color: NIGHT_POSITIONS.prone.color },
+          { label: "decubito destro", value: summary.right_side_seconds, color: NIGHT_POSITIONS.right_side.color },
+          { label: "decubito sinistro", value: summary.left_side_seconds, color: NIGHT_POSITIONS.left_side.color },
+        ];
+        const dominant = positions.reduce((best, current) => current.value > best.value ? current : best);
+        return <View key={item.id} style={[styles.nightHistoryItem, dark && styles.surfaceDarkAlt]}><View style={styles.nightHistoryItemTop}><View><Text style={[styles.nightHistoryDate, dark && styles.textDark]}>{new Date(item.started_at).toLocaleDateString("it-IT", { day: "2-digit", month: "long", year: "numeric" })}</Text><Text style={[styles.mutedSmall, dark && styles.mutedDark]}>{new Date(item.started_at).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })} · {formatDuration(item.duration_seconds)}</Text></View><View style={[styles.nightHistoryStatus, item.status === "active" && styles.nightHistoryStatusActive]}><Text style={[styles.nightHistoryStatusText, item.status === "active" && styles.nightHistoryStatusTextActive]}>{item.status === "active" ? "in corso" : "completata"}</Text></View></View><View style={styles.nightHistoryDominant}><View style={[styles.nightHistoryDot, { backgroundColor: dominant.color }]} /><Text style={[styles.nightHistoryDominantText, dark && styles.mutedDark]}>Posizione prevalente: {dominant.label}</Text></View><Text style={[styles.nightHistoryChanges, dark && styles.mutedDark]}>Cambi posizione: {summary.position_changes}</Text></View>;
+      })}
+      {error ? <Text style={styles.formError}>{error}</Text> : null}
+    </View>
+  );
 }
 
 function HistoricalInsights({ session, patient }: { session: Session; patient: DoctorPatient | null }) {
@@ -606,11 +683,6 @@ function HistoricalInsights({ session, patient }: { session: Session; patient: D
   const [statistics, setStatistics] = useState<PatientStatistics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [config, setConfig] = useState<MonitoringConfig | null>(null);
-  const [moderate, setModerate] = useState("");
-  const [marked, setMarked] = useState("");
-  const [persistence, setPersistence] = useState("");
-  const [savingConfig, setSavingConfig] = useState(false);
   const patientId = session.user.role === "doctor" ? patient?.id : undefined;
 
   const loadHistory = useCallback(async () => {
@@ -636,67 +708,6 @@ function HistoricalInsights({ session, patient }: { session: Session; patient: D
 
   useEffect(() => { loadHistory(); }, [loadHistory]);
 
-  useEffect(() => {
-    if (session.user.role !== "doctor" || !patientId) return;
-    api<MonitoringConfig>(`/api/v1/doctor/patients/${patientId}/monitoring-config`, {}, session.access_token)
-      .then((response) => {
-        setConfig(response);
-        setModerate(String(response.moderate_deviation_deg));
-        setMarked(String(response.marked_deviation_deg));
-        setPersistence(String(response.persistence_seconds));
-      })
-      .catch((caught) => setError(caught instanceof Error ? caught.message : "Impossibile caricare le configurazioni."));
-  }, [patientId, session.access_token, session.user.role]);
-
-  async function saveConfig() {
-    if (!patientId) return;
-    const values = { moderate_deviation_deg: Number(moderate.replace(",", ".")), marked_deviation_deg: Number(marked.replace(",", ".")), persistence_seconds: Number(persistence.replace(",", ".")) };
-    if (!Number.isFinite(values.moderate_deviation_deg) || !Number.isFinite(values.marked_deviation_deg) || !Number.isFinite(values.persistence_seconds)) {
-      Alert.alert("Valori non validi", "Inserisci valori numerici in tutti i campi.");
-      return;
-    }
-    if (values.marked_deviation_deg <= values.moderate_deviation_deg) {
-      Alert.alert("Soglie non valide", "La soglia marcata deve essere maggiore della soglia moderata.");
-      return;
-    }
-    setSavingConfig(true);
-    try {
-      const response = await api<MonitoringConfig>(`/api/v1/doctor/patients/${patientId}/monitoring-config`, { method: "PUT", body: JSON.stringify(values) }, session.access_token);
-      setConfig(response);
-      Alert.alert("Configurazione salvata", "Le nuove soglie saranno applicate al monitoraggio del paziente.");
-    } catch (caught) {
-      Alert.alert("Salvataggio non riuscito", caught instanceof Error ? caught.message : "Riprova più tardi.");
-    } finally {
-      setSavingConfig(false);
-    }
-  }
-
-  function confirmResetConfig() {
-    if (!patientId) return;
-    Alert.alert("Ripristina valori predefiniti", "Vuoi ripristinare 10°, 20° e 5 secondi? I valori sono predefiniti di progetto e non cut-off clinici.", [
-      { text: "Annulla", style: "cancel" },
-      { text: "Ripristina", style: "destructive", onPress: resetConfig },
-    ]);
-  }
-
-  async function resetConfig() {
-    if (!patientId) return;
-    setSavingConfig(true);
-    try {
-      const response = await api<MonitoringConfig>(`/api/v1/doctor/patients/${patientId}/monitoring-config`, { method: "DELETE" }, session.access_token);
-      setConfig(response);
-      setModerate(String(response.moderate_deviation_deg));
-      setMarked(String(response.marked_deviation_deg));
-      setPersistence(String(response.persistence_seconds));
-      Alert.alert("Valori ripristinati", "Sono stati applicati i valori predefiniti di progetto.");
-      await loadHistory();
-    } catch (caught) {
-      Alert.alert("Ripristino non riuscito", caught instanceof Error ? caught.message : "Riprova più tardi.");
-    } finally {
-      setSavingConfig(false);
-    }
-  }
-
   const chartSamples = history.length ? history : [{ timestamp: new Date().toISOString(), deviation_deg: 0, posture_status: "neutral" as PostureStatus, is_incorrect: false }];
   const historyChartData = {
     labels: chartSamples.map((sample, index) => index === 0 || index === chartSamples.length - 1 ? formatHistoryLabel(sample.timestamp, period) : ""),
@@ -706,7 +717,7 @@ function HistoricalInsights({ session, patient }: { session: Session; patient: D
   return (
     <>
       <View style={[styles.historyCard, dark && styles.surfaceDark]}>
-        <View style={styles.historyHeading}><View><Text style={[styles.sectionTitle, dark && styles.textDark]}>Storico posturale</Text><Text style={[styles.mutedSmall, dark && styles.mutedDark]}>Posture corrette e scorrette nel periodo selezionato</Text></View>{loading && <ActivityIndicator color="#087f6a" size="small" />}</View>
+        <View style={styles.historyHeading}><View><Text style={[styles.sectionTitle, dark && styles.textDark]}>Storico diurno</Text><Text style={[styles.mutedSmall, dark && styles.mutedDark]}>Posture corrette e scorrette nell'intera finestra selezionata</Text></View>{loading && <ActivityIndicator color="#087f6a" size="small" />}</View>
         <View style={styles.periodRow}>{HISTORY_PERIODS.map((option) => <Pressable key={option.minutes} onPress={() => setPeriod(option.minutes)} style={[styles.periodButton, period === option.minutes && styles.periodButtonSelected]}><Text style={[styles.periodText, period === option.minutes && styles.periodTextSelected]}>{option.label}</Text></Pressable>)}</View>
         <View style={styles.historyLegend}><View style={styles.legendItem}><View style={[styles.historyLegendDot, styles.correctDot]} /><Text style={styles.legendText}>Corretta</Text></View><View style={styles.legendItem}><View style={[styles.historyLegendDot, styles.incorrectDot]} /><Text style={styles.legendText}>Scorretta</Text></View></View>
         <LineChart
@@ -737,22 +748,6 @@ function HistoricalInsights({ session, patient }: { session: Session; patient: D
         </View>
       )}
 
-      {session.user.role === "doctor" && config && (
-        <View style={[styles.configCard, dark && styles.surfaceDark]}>
-          <Text style={[styles.sectionTitle, dark && styles.textDark]}>Parametri di monitoraggio</Text>
-          <Text style={[styles.mutedSmall, dark && styles.mutedDark]}>Configurazione specifica per {patient?.first_name || patient?.name}</Text>
-          <View style={styles.configGrid}>
-            <View style={styles.configField}><Field label="SOGLIA MODERATA (°)" value={moderate} onChangeText={setModerate} keyboardType="decimal-pad" placeholder="10" /></View>
-            <View style={styles.configField}><Field label="SOGLIA MARCATA (°)" value={marked} onChangeText={setMarked} keyboardType="decimal-pad" placeholder="20" /></View>
-          </View>
-          <Field label="PERSISTENZA PRIMA DELL'AVVISO (SECONDI)" value={persistence} onChangeText={setPersistence} keyboardType="decimal-pad" placeholder="5" />
-          <Text style={styles.configWarning}>Valori dimostrativi: richiedono validazione clinica prima di un uso sanitario.</Text>
-          <View style={styles.configActions}>
-            <Pressable disabled={savingConfig} onPress={confirmResetConfig} style={({ pressed }) => [styles.configResetButton, pressed && styles.pressed]}><Text style={styles.configResetText}>Ripristina predefiniti</Text></Pressable>
-            <Pressable disabled={savingConfig} onPress={saveConfig} style={({ pressed }) => [styles.configSaveButton, pressed && styles.pressed]}>{savingConfig ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Salva parametri</Text>}</Pressable>
-          </View>
-        </View>
-      )}
     </>
   );
 }
@@ -1062,6 +1057,7 @@ const styles = StyleSheet.create({
   infoGrid: { flexDirection: "row", gap: 9 }, infoCard: { flex: 1, backgroundColor: "#fff", borderRadius: 16, padding: 13, flexDirection: "row", alignItems: "center", gap: 9 }, infoIcon: { color: "#20a38c", fontSize: 20 }, infoValue: { color: "#153d35", fontWeight: "800", fontSize: 12, marginTop: 3 },
   notificationCard: { backgroundColor: "#dff5f0", borderRadius: 17, padding: 14, flexDirection: "row", alignItems: "center", gap: 12 }, bellCircle: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#b9e9df", alignItems: "center", justifyContent: "center" }, bell: { color: "#087f6a", fontSize: 17 }, notificationTitle: { color: "#153d35", fontWeight: "900", fontSize: 13 }, notificationText: { color: "#56766f", fontSize: 10, lineHeight: 15, marginTop: 2 }, message: { color: "#42655f", textAlign: "center", fontSize: 11 }, disclaimer: { color: "#8ba09b", textAlign: "center", fontSize: 9, marginTop: 4 },
   nightCard: { borderRadius: 24, padding: 18, backgroundColor: "#16233a", borderWidth: 1, borderColor: "#2d4163", gap: 15, shadowColor: "#07101f", shadowOpacity: 0.18, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 4 }, nightCardActive: { borderColor: "#3d806f" }, nightCardDark: { backgroundColor: "#111d2d", borderColor: "#294b46" }, nightHeader: { flexDirection: "row", alignItems: "center", gap: 11 }, nightMoon: { width: 43, height: 43, borderRadius: 22, backgroundColor: "#243b60", alignItems: "center", justifyContent: "center" }, nightMoonText: { color: "#c8dcff", fontSize: 28, lineHeight: 31 }, nightTitle: { color: "#f1f6ff", fontSize: 18, fontWeight: "900" }, nightSubtitle: { color: "#9eb0cc", fontSize: 10, marginTop: 3 }, nightLiveBadge: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#173c34", borderRadius: 12, paddingHorizontal: 9, paddingVertical: 6 }, nightLiveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#3ec6ae" }, nightLiveText: { color: "#75e0cc", fontSize: 8, fontWeight: "900", letterSpacing: 0.8 }, nightDescription: { color: "#b2bfd2", fontSize: 11, lineHeight: 17 }, nightPositionBox: { backgroundColor: "#101a2b", borderRadius: 18, padding: 17, alignItems: "center", borderWidth: 1, borderColor: "#263a5a" }, nightOverline: { color: "#7e91af", fontSize: 8, fontWeight: "900", letterSpacing: 1 }, nightPosition: { fontSize: 23, fontWeight: "900", marginTop: 7, textAlign: "center" }, nightWaitingText: { color: "#9eb0cc", fontSize: 9, marginTop: 5 }, nightStatsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 }, nightStat: { width: "48%", flexGrow: 1, minHeight: 66, backgroundColor: "#101a2b", borderRadius: 14, padding: 11, borderWidth: 1, borderColor: "#263750" }, nightStatDot: { width: 7, height: 7, borderRadius: 4, position: "absolute", top: 11, right: 11 }, nightStatValue: { color: "#f1f6ff", fontSize: 16, fontWeight: "900" }, nightStatLabel: { color: "#8fa1bd", fontSize: 9, marginTop: 4 }, nightMeta: { flexDirection: "row", justifyContent: "space-between", gap: 10 }, nightMetaText: { color: "#9eb0cc", fontSize: 9, fontWeight: "700" }, nightError: { color: "#ffb4a8", fontSize: 10, lineHeight: 15 }, nightButton: { minHeight: 50, borderRadius: 15, backgroundColor: "#087f6a", alignItems: "center", justifyContent: "center", paddingHorizontal: 14 }, nightStopButton: { backgroundColor: "#a33d3d" }, nightButtonText: { color: "#fff", fontSize: 12, fontWeight: "900", letterSpacing: 0.6 },
+  monitoringSectionHeader: { minHeight: 72, borderRadius: 19, padding: 14, flexDirection: "row", alignItems: "center", gap: 12, borderWidth: 1 }, monitoringSectionDay: { backgroundColor: "#e6f7f3", borderColor: "#b4e3d9" }, monitoringSectionNight: { backgroundColor: "#e9eef8", borderColor: "#c8d5ec" }, monitoringSectionHeaderDark: { backgroundColor: "#172621", borderColor: "#355149" }, monitoringSectionIcon: { width: 43, height: 43, borderRadius: 22, alignItems: "center", justifyContent: "center" }, monitoringSectionIconDay: { backgroundColor: "#bdebe1" }, monitoringSectionIconNight: { backgroundColor: "#243b60" }, monitoringSectionIconText: { color: "#087f6a", fontSize: 22, fontWeight: "900" }, monitoringSectionTitle: { color: "#153d35", fontSize: 18, fontWeight: "900" }, monitoringSectionSubtitle: { color: "#658079", fontSize: 10, lineHeight: 15, marginTop: 2 }, doctorNightSection: { gap: 14, marginTop: 8, paddingTop: 16, borderTopWidth: 2, borderTopColor: "#d8e1ef" }, nightHistoryCard: { backgroundColor: "#fff", borderRadius: 21, paddingTop: 17, paddingBottom: 16, overflow: "hidden" }, nightPeriodButton: { borderColor: "#ccd7eb" }, nightPeriodButtonSelected: { backgroundColor: "#315f9a", borderColor: "#315f9a" }, nightHistoryEmpty: { color: "#78908a", fontSize: 11, textAlign: "center", paddingHorizontal: 18, paddingVertical: 28 }, nightHistoryItem: { marginHorizontal: 14, marginTop: 10, padding: 14, borderRadius: 15, backgroundColor: "#f3f6fb", borderWidth: 1, borderColor: "#dce4f1" }, nightHistoryItemTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }, nightHistoryDate: { color: "#17324d", fontSize: 13, fontWeight: "900" }, nightHistoryStatus: { borderRadius: 10, backgroundColor: "#e4e9f1", paddingHorizontal: 8, paddingVertical: 5 }, nightHistoryStatusActive: { backgroundColor: "#dff5ef" }, nightHistoryStatusText: { color: "#607084", fontSize: 8, fontWeight: "900", textTransform: "uppercase" }, nightHistoryStatusTextActive: { color: "#087f6a" }, nightHistoryDominant: { flexDirection: "row", alignItems: "center", gap: 7, marginTop: 12 }, nightHistoryDot: { width: 9, height: 9, borderRadius: 5 }, nightHistoryDominantText: { color: "#425b70", fontSize: 10, fontWeight: "800" }, nightHistoryChanges: { color: "#718294", fontSize: 9, marginTop: 6 },
   associationDropdown: { backgroundColor: "#fff", borderRadius: 21, padding: 17, borderWidth: 1, borderColor: "#cfe4df", shadowColor: "#0a4c40", shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 3 }, associateButton: { minHeight: 47, borderRadius: 14, backgroundColor: "#087f6a", alignItems: "center", justifyContent: "center", marginTop: 13 },
   addPatientButton: { minHeight: 52, borderRadius: 16, borderWidth: 1.5, borderColor: "#087f6a", backgroundColor: "#fff", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, marginTop: 3 }, addPatientButtonOpen: { backgroundColor: "#e2f5f1", borderColor: "#5bb8a8" }, addPatientPlus: { color: "#087f6a", fontSize: 27, lineHeight: 28, fontWeight: "500" }, addPatientPlusOpen: { fontSize: 25 }, addPatientText: { color: "#087f6a", fontSize: 14, fontWeight: "900" }, addPatientTextOpen: { color: "#356c62" },
   directoryHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 5 }, directoryTitle: { color: "#153d35", fontSize: 19, fontWeight: "900" }, countBadge: { minWidth: 25, height: 25, paddingHorizontal: 7, borderRadius: 13, backgroundColor: "#cceee7", alignItems: "center", justifyContent: "center" }, countText: { color: "#087f6a", fontSize: 11, fontWeight: "900" },
@@ -1074,6 +1070,5 @@ const styles = StyleSheet.create({
   formCard: { backgroundColor: "#fff", borderRadius: 23, padding: 19 }, passwordHint: { color: "#78908a", fontSize: 10, lineHeight: 15, marginTop: 11 }, settingsCard: { backgroundColor: "#fff", borderRadius: 21, padding: 17, flexDirection: "row", alignItems: "center", gap: 12 }, settingIcon: { width: 45, height: 45, borderRadius: 23, backgroundColor: "#dff5f0", alignItems: "center", justifyContent: "center" }, settingIconText: { color: "#087f6a", fontSize: 22 }, settingCopy: { flex: 1 }, settingTitle: { color: "#153d35", fontSize: 15, fontWeight: "900" }, settingText: { color: "#78908a", fontSize: 10, lineHeight: 15, marginTop: 3 }, soonBadge: { backgroundColor: "#edf4f2", borderRadius: 10, paddingHorizontal: 7, paddingVertical: 5 }, soonText: { color: "#608078", fontSize: 7, fontWeight: "900", letterSpacing: 0.4 }, settingsNote: { color: "#78908a", fontSize: 11, lineHeight: 17, textAlign: "center", paddingHorizontal: 18 },
   historyCard: { backgroundColor: "#fff", borderRadius: 21, paddingTop: 17, overflow: "hidden" }, historyHeading: { minHeight: 38, paddingHorizontal: 17, flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }, periodRow: { flexDirection: "row", gap: 6, paddingHorizontal: 14, marginTop: 14 }, periodButton: { flex: 1, minHeight: 34, borderRadius: 11, borderWidth: 1, borderColor: "#d6e5e1", alignItems: "center", justifyContent: "center", backgroundColor: "#fbfefd" }, periodButtonSelected: { backgroundColor: "#087f6a", borderColor: "#087f6a" }, periodText: { color: "#5d7771", fontSize: 9, fontWeight: "800" }, periodTextSelected: { color: "#fff" }, historyLegend: { flexDirection: "row", justifyContent: "flex-end", gap: 13, paddingHorizontal: 17, marginTop: 12 }, legendItem: { flexDirection: "row", alignItems: "center", gap: 5 }, historyLegendDot: { width: 8, height: 8, borderRadius: 4 }, correctDot: { backgroundColor: "#25a995" }, incorrectDot: { backgroundColor: "#d92d20" }, historyChart: { marginLeft: -13, marginTop: 2 }, noHistoryText: { color: "#78908a", fontSize: 10, textAlign: "center", paddingHorizontal: 16, paddingBottom: 15, marginTop: -7 },
   statisticsCard: { backgroundColor: "#fff", borderRadius: 21, padding: 17 }, statisticsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 9, marginTop: 14 }, statisticBox: { width: "48%", flexGrow: 1, minHeight: 82, borderRadius: 15, backgroundColor: "#f3f8f7", padding: 13, justifyContent: "center" }, statisticValue: { fontSize: 22, fontWeight: "900" }, statisticLabel: { color: "#6b817c", fontSize: 10, fontWeight: "700", marginTop: 4 },
-  configCard: { backgroundColor: "#fff", borderRadius: 21, padding: 17 }, configGrid: { flexDirection: "row", gap: 9 }, configField: { flex: 1 }, configWarning: { color: "#9a6500", backgroundColor: "#fff7e6", borderRadius: 11, padding: 10, fontSize: 9, lineHeight: 14, marginTop: 13 }, configActions: { flexDirection: "row", gap: 8, marginTop: 13 }, configResetButton: { flex: 1, minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: "#d0a044", alignItems: "center", justifyContent: "center", paddingHorizontal: 8 }, configResetText: { color: "#9a6500", fontSize: 11, fontWeight: "900", textAlign: "center" }, configSaveButton: { flex: 1, minHeight: 48, borderRadius: 14, backgroundColor: "#087f6a", alignItems: "center", justifyContent: "center", paddingHorizontal: 8 },
   screenDark: { backgroundColor: "#0d1714" }, headerDark: { backgroundColor: "#13211d", borderBottomColor: "#29433d" }, surfaceDark: { backgroundColor: "#162521", borderColor: "#29433d" }, surfaceDarkAlt: { backgroundColor: "#20332e", borderColor: "#355149" }, textDark: { color: "#e7f4f0" }, mutedDark: { color: "#9eb9b1" }, borderDark: { borderBottomColor: "#29433d" }, inputDark: { backgroundColor: "#20332e", borderColor: "#355149", color: "#e7f4f0" },
 });

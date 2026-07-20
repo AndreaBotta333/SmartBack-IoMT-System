@@ -459,3 +459,23 @@ Introdurre una modalità notturna attivabile dal Paziente, mostrare in tempo rea
 - Confermata la presenza di una sessione attiva e di campioni `night_position` aggiornati in InfluxDB.
 - Eseguita con successo su InfluxDB la nuova query di selezione automatica dell'ultima sessione.
 - Validata la sintassi JSON della dashboard Grafana.
+
+## 20 luglio 2026 — Area Medico consultiva diurna e notturna
+
+### Modifiche
+
+- Riorganizzata la scheda del paziente in due aree graficamente distinte: `Monitoraggio diurno` e `Monitoraggio notturno`.
+- Mantenuto sempre visibile il pannello diurno live, mostrando uno stato esplicito quando non sono presenti dati in tempo reale.
+- Rinominato e mantenuto sempre disponibile lo `Storico diurno`, con l'intera finestra temporale rappresentata dal grafico.
+- Aggiunto al Medico il pannello notturno live in sola lettura, sempre visibile anche quando la modalità notte non è attiva.
+- Collegato il flusso WebSocket notturno anche al paziente selezionato dal Medico.
+- Aggiunto lo storico notturno del paziente con finestre di 7, 30 e 90 giorni oppure tutte le sessioni disponibili.
+- Mostrati per ogni sessione notturna data, ora, durata, stato, posizione prevalente e numero di cambi posizione.
+- Rimossi dall'area Medico tutti i campi e le azioni per caricare, modificare, salvare o ripristinare soglie e parametri di monitoraggio.
+- Evitata l'attivazione automatica del tema scuro nell'account Medico quando un paziente avvia la modalità notte.
+
+### Verifiche
+
+- Controllo TypeScript completato senza errori nel container Expo.
+- Bundle Android Expo generato correttamente.
+- Verificato che il Medico utilizzi gli endpoint notturni esclusivamente in lettura e che i comandi di avvio/arresto restino disponibili solo al Paziente.
