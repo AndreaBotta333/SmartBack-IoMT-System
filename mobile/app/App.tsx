@@ -305,6 +305,9 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
   const [nightSample, setNightSample] = useState<NightSample | null>(null);
   const [nightBusy, setNightBusy] = useState(false);
   const [nightError, setNightError] = useState("");
+  const [nightClock, setNightClock] = useState(Date.now());
+  const [nightStatusSyncedAt, setNightStatusSyncedAt] = useState(Date.now());
+  const [nightPositionSince, setNightPositionSince] = useState(Date.now());
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const visibleSamples = session.user.role === "doctor"
     ? samples.filter((sample) => sample.patient_id === selectedPatient?.patient_code)
@@ -344,6 +347,7 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
     try {
       const response = await api<NightStatus>("/api/v1/night-monitoring/status", {}, session.access_token);
       setNightStatus(response);
+      setNightStatusSyncedAt(Date.now());
       setNightError("");
       if (!response.active) setNightSample(null);
     } catch (caught) {
@@ -363,6 +367,13 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
   }, [dark, nightStatus?.active, setDark]);
 
   useEffect(() => {
+    if (!nightStatus?.active) return;
+    setNightClock(Date.now());
+    const interval = setInterval(() => setNightClock(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [nightStatus?.active]);
+
+  useEffect(() => {
     let active = true;
     let socket: WebSocket | null = null;
     function connect() {
@@ -373,7 +384,12 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
         try {
           const payload = JSON.parse(event.data) as PostureSample | NightSample;
           if ("mode" in payload && payload.mode === "night") {
-            if (session.user.role === "patient" && payload.patient_id === session.user.patient_code) setNightSample(payload);
+            if (session.user.role === "patient" && payload.patient_id === session.user.patient_code) {
+              setNightSample((current) => {
+                if (current?.position !== payload.position) setNightPositionSince(Date.now());
+                return payload;
+              });
+            }
           } else if ("deviation_deg" in payload && typeof payload.deviation_deg === "number") {
             setSamples((current) => [...current.slice(-(MAX_SAMPLES - 1)), payload]);
           }
@@ -435,6 +451,7 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
         { method: "POST" }, session.access_token,
       );
       setNightStatus(response);
+      setNightStatusSyncedAt(Date.now());
       if (response.active) setDark(true);
       else setNightSample(null);
     } catch (caught) {
@@ -472,7 +489,7 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
         </View>
 
         {session.user.role === "patient" && (
-          <NightModePanel status={nightStatus} sample={nightSample} busy={nightBusy} error={nightError} onToggle={toggleNightMode} />
+          <NightModePanel status={nightStatus} sample={nightSample} clock={nightClock} statusSyncedAt={nightStatusSyncedAt} positionSince={nightPositionSince} busy={nightBusy} error={nightError} onToggle={toggleNightMode} />
         )}
 
         {session.user.role === "patient" && nightStatus?.active ? null : session.user.role === "doctor" && !selectedPatient ? (
@@ -529,11 +546,19 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
   );
 }
 
-function NightModePanel({ status, sample, busy, error, onToggle }: { status: NightStatus | null; sample: NightSample | null; busy: boolean; error: string; onToggle: () => void }) {
+function NightModePanel({ status, sample, clock, statusSyncedAt, positionSince, busy, error, onToggle }: { status: NightStatus | null; sample: NightSample | null; clock: number; statusSyncedAt: number; positionSince: number; busy: boolean; error: string; onToggle: () => void }) {
   const { dark } = useAppTheme();
   const active = Boolean(status?.active);
   const position = NIGHT_POSITIONS[sample?.position ?? "unknown"];
   const summary = status?.session?.summary;
+  const liveSeconds = (target: NightPosition, stored: number) => stored + (
+    sample?.position === target
+      ? Math.max(0, (clock - Math.max(statusSyncedAt, positionSince)) / 1000)
+      : 0
+  );
+  const sessionDuration = status?.session?.started_at
+    ? Math.max(0, (clock - Date.parse(status.session.started_at)) / 1000)
+    : 0;
   return (
     <View style={[styles.nightCard, active && styles.nightCardActive, dark && styles.nightCardDark]}>
       <View style={styles.nightHeader}>
@@ -549,12 +574,12 @@ function NightModePanel({ status, sample, busy, error, onToggle }: { status: Nig
             {!sample && <Text style={styles.nightWaitingText}>In attesa del primo dato…</Text>}
           </View>
           <View style={styles.nightStatsGrid}>
-            <NightStat label="supino" seconds={summary?.supine_seconds ?? 0} color={NIGHT_POSITIONS.supine.color} />
-            <NightStat label="prono" seconds={summary?.prone_seconds ?? 0} color={NIGHT_POSITIONS.prone.color} />
-            <NightStat label="lato destro" seconds={summary?.right_side_seconds ?? 0} color={NIGHT_POSITIONS.right_side.color} />
-            <NightStat label="lato sinistro" seconds={summary?.left_side_seconds ?? 0} color={NIGHT_POSITIONS.left_side.color} />
+            <NightStat label="supino" seconds={liveSeconds("supine", summary?.supine_seconds ?? 0)} color={NIGHT_POSITIONS.supine.color} />
+            <NightStat label="prono" seconds={liveSeconds("prone", summary?.prone_seconds ?? 0)} color={NIGHT_POSITIONS.prone.color} />
+            <NightStat label="lato destro" seconds={liveSeconds("right_side", summary?.right_side_seconds ?? 0)} color={NIGHT_POSITIONS.right_side.color} />
+            <NightStat label="lato sinistro" seconds={liveSeconds("left_side", summary?.left_side_seconds ?? 0)} color={NIGHT_POSITIONS.left_side.color} />
           </View>
-          <View style={styles.nightMeta}><Text style={styles.nightMetaText}>Maglia: {status?.session?.device_id ?? "—"}</Text><Text style={styles.nightMetaText}>Durata: {formatDuration(status?.session?.duration_seconds ?? 0)}</Text></View>
+          <View style={styles.nightMeta}><Text style={styles.nightMetaText}>Maglia: {status?.session?.device_id ?? "—"}</Text><Text style={styles.nightMetaText}>Durata: {formatDuration(sessionDuration)}</Text></View>
         </>
       ) : <Text style={styles.nightDescription}>Attivando questa modalità il tema scuro si abilita automaticamente e i dati vengono inviati alla vista notturna dedicata.</Text>}
       {error ? <Text style={styles.nightError}>{error}</Text> : null}

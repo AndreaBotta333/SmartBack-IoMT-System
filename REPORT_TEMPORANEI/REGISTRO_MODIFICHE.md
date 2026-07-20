@@ -434,3 +434,6 @@ Introdurre una modalità notturna attivabile dal Paziente, mostrare in tempo rea
 - Verificato il comportamento senza maglia assegnata: il backend blocca l'avvio, non crea alcuna sessione notturna e restituisce il messaggio `Nessuna maglia attiva assegnata al paziente`.
 - Uniformata la dicitura della posizione corrente nell'app: `Lato destro` e `Lato sinistro`, coerentemente con i riepiloghi sottostanti.
 - Uniformate tutte le etichette notturne in minuscolo: `supino`, `prono`, `lato destro`, `lato sinistro` e `transizione`.
+- Resi fluidi i contatori notturni nell'app con aggiornamento ogni secondo, mantenendo un riallineamento periodico con i valori autorevoli del backend.
+- Gestito il cambio posizione in tempo reale: l'incremento locale viene trasferito subito al nuovo stato senza attendere il successivo ciclo di polling di cinque secondi.
+- Resa fluida anche la durata complessiva della sessione notturna.
