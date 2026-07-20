@@ -9,8 +9,8 @@ storico, ma non puo avviare o fermare la rilevazione al posto del paziente.
 
 Nell'app il paziente usa il pulsante `MODALITÀ NOTTE`. L'attivazione abilita
 automaticamente il tema scuro e sostituisce temporaneamente la vista posturale
-diurna con la posizione notturna in tempo reale, l'affidabilita della
-classificazione e le durate cumulate per posizione. Il tema non puo essere
+diurna con la posizione notturna in tempo reale e le durate cumulate per
+posizione. Il tema non puo essere
 disattivato dalle Impostazioni finche la sessione notturna resta attiva.
 
 Il backend classifica `supino`, `prono`, `decubito destro`, `decubito sinistro`
@@ -85,7 +85,6 @@ La vista live mostra:
 - ultima posizione rilevata;
 - timeline delle posizioni;
 - distribuzione indicativa del tempo;
-- qualita della classificazione nel tempo.
 
 Lo storico notturno permette di selezionare intervallo e sessione, oppure tutte
 le sessioni, e mostra una timeline unica. Supino, prono e i due decubiti sono

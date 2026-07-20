@@ -379,7 +379,7 @@ Introdurre una modalità notturna attivabile dal Paziente, mostrare in tempo rea
 - Attivato automaticamente il tema scuro all'avvio della modalità notte.
 - Bloccata la disattivazione manuale del tema nelle Impostazioni finché il monitoraggio notturno è attivo.
 - Sostituita durante la sessione notturna la dashboard posturale diurna con una vista live dedicata.
-- Mostrate nell'app posizione corrente, affidabilità della classificazione, durata della sessione, maglia utilizzata e tempi cumulati supino, prono, lato destro e lato sinistro.
+- Mostrate nell'app posizione corrente, durata della sessione, maglia utilizzata e tempi cumulati supino, prono, lato destro e lato sinistro.
 - Gestiti gli eventi notturni ricevuti in tempo reale tramite il WebSocket già utilizzato dall'app.
 - Aggiunta la classificazione backend indipendente delle posizioni `supine`, `prone`, `right_side`, `left_side` e `unknown` a partire dal vettore di gravità normalizzato.
 - Aggiunti smoothing, isteresi e stabilizzazione temporale per limitare cambi di posizione dovuti a rumore o transizioni brevi.
@@ -422,3 +422,13 @@ Introdurre una modalità notturna attivabile dal Paziente, mostrare in tempo rea
 
 - La corrispondenza iniziale degli assi è coerente con il simulatore ma dovrà essere confermata sperimentalmente quando sarà disponibile la smart t-shirt fisica.
 - La classificazione notturna è una misura tecnica della posizione della maglia e non costituisce una diagnosi clinica.
+
+## 20 luglio 2026 — Semplificazione vista notturna
+
+### Modifiche
+
+- Rimossa dall'app Paziente la percentuale di affidabilità della classificazione.
+- Rimossa dalla dashboard Grafana live la serie `Qualità della classificazione`.
+- Esteso il grafico di distribuzione delle posizioni all'intera larghezza disponibile.
+- Mantenuto il valore tecnico di affidabilità esclusivamente nel backend e in InfluxDB, senza esporlo nelle interfacce utente.
+- Verificato il comportamento senza maglia assegnata: il backend blocca l'avvio, non crea alcuna sessione notturna e restituisce il messaggio `Nessuna maglia attiva assegnata al paziente`.
