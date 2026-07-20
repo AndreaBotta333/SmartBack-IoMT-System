@@ -63,11 +63,11 @@ const HISTORY_PERIODS: { minutes: HistoryPeriod; label: string }[] = [
   { minutes: 1440, label: "24 ore" }, { minutes: 10080, label: "7 giorni" },
 ];
 const NIGHT_POSITIONS: Record<NightPosition, { label: string; shortLabel: string; color: string }> = {
-  supine: { label: "Decubito supino", shortLabel: "Supino", color: "#3ec6ae" },
-  prone: { label: "Decubito prono", shortLabel: "Prono", color: "#ef8354" },
-  right_side: { label: "Lato destro", shortLabel: "Lato destro", color: "#6f9ceb" },
-  left_side: { label: "Lato sinistro", shortLabel: "Lato sinistro", color: "#b18be8" },
-  unknown: { label: "Posizione in transizione", shortLabel: "Transizione", color: "#8da39d" },
+  supine: { label: "supino", shortLabel: "supino", color: "#3ec6ae" },
+  prone: { label: "prono", shortLabel: "prono", color: "#ef8354" },
+  right_side: { label: "lato destro", shortLabel: "lato destro", color: "#6f9ceb" },
+  left_side: { label: "lato sinistro", shortLabel: "lato sinistro", color: "#b18be8" },
+  unknown: { label: "transizione", shortLabel: "transizione", color: "#8da39d" },
 };
 const NAME_PATTERN = /^\p{L}+(?:[ '\u2019-]\p{L}+)*$/u;
 const EMAIL_PATTERN = /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,63}$/i;
@@ -549,10 +549,10 @@ function NightModePanel({ status, sample, busy, error, onToggle }: { status: Nig
             {!sample && <Text style={styles.nightWaitingText}>In attesa del primo dato…</Text>}
           </View>
           <View style={styles.nightStatsGrid}>
-            <NightStat label="Supino" seconds={summary?.supine_seconds ?? 0} color={NIGHT_POSITIONS.supine.color} />
-            <NightStat label="Prono" seconds={summary?.prone_seconds ?? 0} color={NIGHT_POSITIONS.prone.color} />
-            <NightStat label="Lato destro" seconds={summary?.right_side_seconds ?? 0} color={NIGHT_POSITIONS.right_side.color} />
-            <NightStat label="Lato sinistro" seconds={summary?.left_side_seconds ?? 0} color={NIGHT_POSITIONS.left_side.color} />
+            <NightStat label="supino" seconds={summary?.supine_seconds ?? 0} color={NIGHT_POSITIONS.supine.color} />
+            <NightStat label="prono" seconds={summary?.prone_seconds ?? 0} color={NIGHT_POSITIONS.prone.color} />
+            <NightStat label="lato destro" seconds={summary?.right_side_seconds ?? 0} color={NIGHT_POSITIONS.right_side.color} />
+            <NightStat label="lato sinistro" seconds={summary?.left_side_seconds ?? 0} color={NIGHT_POSITIONS.left_side.color} />
           </View>
           <View style={styles.nightMeta}><Text style={styles.nightMetaText}>Maglia: {status?.session?.device_id ?? "—"}</Text><Text style={styles.nightMetaText}>Durata: {formatDuration(status?.session?.duration_seconds ?? 0)}</Text></View>
         </>
