@@ -31,6 +31,7 @@ class ThresholdProfile:
 class AxisState:
     moderate_active: bool = False
     marked_active: bool = False
+    deviation_started_at: float | None = None
 
 
 @dataclass
@@ -45,7 +46,11 @@ class DevicePostureState:
 
 
 def vector_pitch(x: float, y: float, z: float) -> float:
-    return math.degrees(math.atan2(y, math.sqrt(x * x + z * z)))
+    # Sulla maglia reale Y e l'asse verticale e Z conserva il verso del
+    # movimento avanti/indietro. Non usare sqrt(x^2 + z^2) qui: renderebbe
+    # positiva la componente trasversale e confonderebbe i due versi.
+    # Con la convenzione della maglia, avanti e positivo e indietro negativo.
+    return math.degrees(math.atan2(-z, y))
 
 
 def vector_roll(x: float, y: float, z: float) -> float:
@@ -59,12 +64,14 @@ class PostureEngine:
         *,
         ema_alpha: float,
         hysteresis_deg: float,
+        calibration_provider: Callable[[str, str], tuple[float, float] | None] | None = None,
     ) -> None:
         if not 0 < ema_alpha <= 1:
             raise ValueError("ema_alpha must be in the interval (0, 1]")
         if hysteresis_deg < 0:
             raise ValueError("hysteresis_deg cannot be negative")
         self._profile_provider = profile_provider
+        self._calibration_provider = calibration_provider
         self._ema_alpha = ema_alpha
         self._hysteresis_deg = hysteresis_deg
         self._lock = threading.RLock()
@@ -98,6 +105,19 @@ class PostureEngine:
         if not state.moderate_active:
             state.marked_active = False
 
+    @staticmethod
+    def _axis_duration(state: AxisState, timestamp_seconds: float) -> float:
+        if state.moderate_active:
+            if state.deviation_started_at is None:
+                state.deviation_started_at = timestamp_seconds
+        else:
+            state.deviation_started_at = None
+        return (
+            max(0.0, timestamp_seconds - state.deviation_started_at)
+            if state.deviation_started_at is not None
+            else 0.0
+        )
+
     def process(self, payload: dict[str, Any]) -> dict[str, Any]:
         device_id = str(payload["device_id"])
         patient_id = str(payload["patient_id"])
@@ -115,10 +135,17 @@ class PostureEngine:
             state.filtered_pitch_deg = pitch
             state.filtered_roll_deg = roll
 
-            if state.reference_pitch_deg is None:
-                state.reference_pitch_deg = pitch
-            if state.reference_roll_deg is None:
-                state.reference_roll_deg = roll
+            if state.reference_pitch_deg is None or state.reference_roll_deg is None:
+                stored_reference = (
+                    self._calibration_provider(device_id, patient_id)
+                    if self._calibration_provider is not None
+                    else None
+                )
+                if stored_reference is not None:
+                    state.reference_pitch_deg, state.reference_roll_deg = stored_reference
+                else:
+                    state.reference_pitch_deg = pitch
+                    state.reference_roll_deg = roll
 
             pitch_deviation = pitch - state.reference_pitch_deg
             roll_deviation = roll - state.reference_roll_deg
@@ -135,15 +162,19 @@ class PostureEngine:
                 profile.roll_marked_deg,
             )
 
+            timestamp_seconds = timestamp_ms / 1000
+            pitch_duration = self._axis_duration(state.pitch, timestamp_seconds)
+            roll_duration = self._axis_duration(state.roll, timestamp_seconds)
+
             moderate_active = state.pitch.moderate_active or state.roll.moderate_active
             marked_active = state.pitch.marked_active or state.roll.marked_active
             if moderate_active:
                 if state.deviation_started_at is None:
-                    state.deviation_started_at = timestamp_ms / 1000
+                    state.deviation_started_at = timestamp_seconds
             else:
                 state.deviation_started_at = None
             duration = (
-                max(0.0, timestamp_ms / 1000 - state.deviation_started_at)
+                max(0.0, timestamp_seconds - state.deviation_started_at)
                 if state.deviation_started_at is not None
                 else 0.0
             )
@@ -176,6 +207,8 @@ class PostureEngine:
                 "pitch_status": self._axis_label(state.pitch),
                 "roll_status": self._axis_label(state.roll),
                 "deviation_duration_seconds": round(duration, 1),
+                "pitch_deviation_duration_seconds": round(pitch_duration, 1),
+                "roll_deviation_duration_seconds": round(roll_duration, 1),
                 "posture_status": status,
                 "alert": alert,
                 "threshold_profile": f"patient:{patient_id}",

@@ -12,7 +12,7 @@ dispositivo reale.
 - **Node-RED**: gestione e normalizzazione del flusso IoT;
 - **FastAPI**: backend, autenticazione e logica applicativa;
 - **InfluxDB**: serie temporali posturali e dati del dispositivo;
-- **SQLite**: utenti, sessioni e associazioni medico-paziente;
+- **SQLite**: utenti, sessioni, inventario magliette e storico delle assegnazioni;
 - **Grafana**: dashboard di monitoraggio;
 - **Expo / React Native**: applicazione mobile;
 - **simulatore Python**: sorgente dati usata durante lo sviluppo senza t-shirt.
@@ -61,7 +61,7 @@ Servizi locali principali:
 
 - API FastAPI: `http://localhost:8000/docs
 - Node-RED: `http://localhost:1880`
-- Grafana medico: `http://localhost:3000` (credenziali SmartBack con ruolo medico)
+- Portale medico e Grafana: `http://localhost:3000` (credenziali SmartBack con ruolo medico)
 - InfluxDB: `http://localhost:8086`
 
 ## Avvio manuale dell'app mobile
@@ -93,4 +93,6 @@ Quando cambia la rete Wi-Fi, aggiornare `HOST_IP` in `.env`, ricreare il contain
   `docs/GRAFANA_MEDICAL_ACCESS.md`.
 - Il contratto dello storico persistente condiviso dalle interfacce e descritto
   in `docs/HISTORY_API.md`.
+- Il simulatore fedele dell'ESP32, i suoi scenari e i controlli MQTT sono
+  descritti in `docs/SMART_SHIRT_SIMULATOR.md`.
 - La cartella `REPORT_TEMPORANEI` contiene il registro di sviluppo e dovrà essere eliminata dopo la preparazione della documentazione finale.

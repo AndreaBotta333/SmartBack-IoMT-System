@@ -9,14 +9,21 @@ import paho.mqtt.client as mqtt
 
 HOST = os.getenv("MQTT_HOST", "mosquitto")
 PORT = int(os.getenv("MQTT_PORT", "1883"))
-TOPIC = os.getenv("MQTT_PROBE_TOPIC", "smartback/#")
+TOPICS = tuple(
+    topic.strip()
+    for topic in os.getenv(
+        "MQTT_PROBE_TOPICS",
+        "unisadiem/smartshirt/+/#,smartback/#",
+    ).split(",")
+    if topic.strip()
+)
 
 
 def on_connect(client, userdata, flags, reason_code, properties):
     if reason_code != 0:
         raise RuntimeError(f"MQTT connection failed: {reason_code}")
-    print(f"Connected to {HOST}:{PORT}; listening on {TOPIC}", flush=True)
-    client.subscribe(TOPIC, qos=1)
+    print(f"Connected to {HOST}:{PORT}; listening on {', '.join(TOPICS)}", flush=True)
+    client.subscribe([(topic, 1) for topic in TOPICS])
 
 
 def on_message(client, userdata, message):

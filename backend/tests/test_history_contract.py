@@ -6,7 +6,15 @@ from fastapi import HTTPException
 
 from app import main as main_module
 from app.influx_manager import InfluxManager
-from app.main import accessible_patient, normalize_history_range
+from app.main import GrafanaLoginRequest, accessible_patient, normalize_history_range
+
+
+class GrafanaLoginContractTests(unittest.TestCase):
+    def test_admin_identifier_does_not_require_email_syntax(self) -> None:
+        request = GrafanaLoginRequest(
+            email="admin", password="smartback-dev-password"
+        )
+        self.assertEqual(request.email, "admin")
 
 
 class HistoryRangeTests(unittest.TestCase):
@@ -70,6 +78,17 @@ class HistoryClassificationTests(unittest.TestCase):
         self.assertEqual(InfluxManager._axis_status(4, 10, 20), "neutral")
         self.assertEqual(InfluxManager._axis_status(-12, 10, 20), "moderate")
         self.assertEqual(InfluxManager._axis_status(25, 10, 20), "marked")
+
+    def test_alerts_are_grouped_by_monitoring_session(self) -> None:
+        alerts = [
+            {"timestamp": "2026-07-20T10:05:00+00:00", "session_id": "session-b"},
+            {"timestamp": "2026-07-20T09:00:00+00:00", "session_id": None},
+            {"timestamp": "2026-07-20T10:00:00+00:00", "session_id": "session-b"},
+        ]
+        sessions = InfluxManager.group_alerts_by_session(alerts)
+        self.assertEqual(sessions[0]["session_id"], "session-b")
+        self.assertEqual(sessions[0]["alert_count"], 2)
+        self.assertEqual(sessions[1]["label"], "Sessione precedente")
 
 
 class HistoryAuthorizationTests(unittest.TestCase):

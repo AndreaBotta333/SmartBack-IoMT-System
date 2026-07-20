@@ -40,12 +40,94 @@ def init_database(path: str) -> sqlite3.Connection:
             FOREIGN KEY(patient_id) REFERENCES users(id),
             FOREIGN KEY(updated_by) REFERENCES users(id)
         );
+        CREATE TABLE IF NOT EXISTS device_calibrations (
+            device_id TEXT PRIMARY KEY,
+            patient_id TEXT NOT NULL,
+            reference_pitch_deg REAL NOT NULL,
+            reference_roll_deg REAL NOT NULL,
+            algorithm_version INTEGER NOT NULL DEFAULT 1,
+            calibrated_at TEXT NOT NULL,
+            calibrated_by TEXT,
+            FOREIGN KEY(patient_id) REFERENCES users(id),
+            FOREIGN KEY(calibrated_by) REFERENCES users(id)
+        );
+        CREATE TABLE IF NOT EXISTS devices (
+            device_id TEXT PRIMARY KEY,
+            display_name TEXT,
+            source_type TEXT NOT NULL DEFAULT 'physical'
+                CHECK(source_type IN ('physical', 'simulated')),
+            first_seen_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            quality TEXT,
+            has_telemetry INTEGER NOT NULL DEFAULT 0,
+            archived_at TEXT
+        );
+        CREATE TABLE IF NOT EXISTS device_assignments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id TEXT NOT NULL,
+            patient_id TEXT NOT NULL,
+            assigned_at TEXT NOT NULL,
+            released_at TEXT,
+            assigned_by TEXT,
+            released_by TEXT,
+            FOREIGN KEY(device_id) REFERENCES devices(device_id),
+            FOREIGN KEY(patient_id) REFERENCES users(id),
+            FOREIGN KEY(assigned_by) REFERENCES users(id),
+            FOREIGN KEY(released_by) REFERENCES users(id)
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_active_assignment_device
+            ON device_assignments(device_id) WHERE released_at IS NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_active_assignment_patient
+            ON device_assignments(patient_id) WHERE released_at IS NULL;
     """)
     _migrate_users(connection)
     _migrate_monitoring_configs(connection)
+    _migrate_device_calibrations(connection)
+    _migrate_devices(connection)
     _backfill_users(connection)
+    _seed_physical_shirt(connection)
     connection.commit()
     return connection
+
+
+def _migrate_device_calibrations(connection: sqlite3.Connection) -> None:
+    columns = {
+        row[1]
+        for row in connection.execute(
+            "PRAGMA table_info(device_calibrations)"
+        ).fetchall()
+    }
+    if "algorithm_version" not in columns:
+        connection.execute(
+            "ALTER TABLE device_calibrations "
+            "ADD COLUMN algorithm_version INTEGER NOT NULL DEFAULT 1"
+        )
+
+
+def _migrate_devices(connection: sqlite3.Connection) -> None:
+    columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(devices)").fetchall()
+    }
+    if "source_type" not in columns:
+        connection.execute(
+            "ALTER TABLE devices ADD COLUMN source_type TEXT NOT NULL DEFAULT 'physical'"
+        )
+    if "has_telemetry" not in columns:
+        connection.execute(
+            "ALTER TABLE devices ADD COLUMN has_telemetry INTEGER NOT NULL DEFAULT 1"
+        )
+    if "archived_at" not in columns:
+        connection.execute("ALTER TABLE devices ADD COLUMN archived_at TEXT")
+
+
+def _seed_physical_shirt(connection: sqlite3.Connection) -> None:
+    now = "1970-01-01T00:00:00+00:00"
+    connection.execute(
+        "INSERT INTO devices(device_id,display_name,source_type,first_seen_at,last_seen_at,quality,has_telemetry) "
+        "VALUES ('tshirt002','Maglia 2','physical',?,?,NULL,0) "
+        "ON CONFLICT(device_id) DO UPDATE SET display_name='Maglia 2',source_type='physical'",
+        (now, now),
+    )
 
 
 def _migrate_users(connection: sqlite3.Connection) -> None:

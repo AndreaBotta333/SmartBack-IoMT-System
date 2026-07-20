@@ -9,6 +9,15 @@
    docker compose up -d --build
    ```
 
+   Se il simulatore era stato usato in precedenza, fermarlo esplicitamente:
+
+   ```bash
+   docker compose stop simulator
+   ```
+
+   Il servizio usa `restart: "no"`, quindi non riparte automaticamente al
+   successivo avvio di Docker.
+
 3. Verificare `http://localhost:8000/health`, Node-RED su porta `1880` e
    InfluxDB su porta `8086`.
 4. Aprire un osservatore MQTT:
@@ -97,8 +106,9 @@ SMARTSHIRT_PATIENT_ID=patient-demo-001
 - Il WebSocket `/ws/wearable` riceve campioni continui.
 - InfluxDB contiene `raw_accelerometer`, `device_status` e `posture`.
 - Scollegamento e riconnessione non richiedono il riavvio dello stack.
-- La calibrazione viene eseguita con il soggetto in posa neutra tramite
-  `POST /api/v1/devices/{device_id}/calibration`.
+- La calibrazione viene eseguita con il soggetto in posa neutra dal pulsante
+  **Fissa calibrazione** di Grafana oppure tramite la chiamata autenticata
+  `POST /api/v1/devices/{device_id}/calibration` usata dall'app.
 
 ## Dove osservare i dati
 
@@ -110,7 +120,7 @@ SMARTSHIRT_PATIENT_ID=patient-demo-001
 - **FastAPI** (`http://localhost:8000/docs`):
   `/api/v1/posture/latest`, `/api/v1/device/latest` e `/health`.
 - **Grafana** (`http://localhost:3000`): dashboard
-  `SmartBack - Monitoraggio posturale`, aggiornata ogni 5 secondi.
+  `SmartBack - Monitoraggio posturale`, aggiornata ogni secondo.
 - **App**: riceve in tempo reale postura, deviazione e stato attraverso
   `/ws/wearable`; recupera la batteria tramite REST.
 
@@ -129,7 +139,7 @@ FastAPI genera gli alert posturali solo dopo il tempo di persistenza configurato
 - `POSTURE_MARKED_DEVIATION`;
 - evento con `active=false` quando la postura rientra.
 
-Il backend applica un filtro EMA al pitch e al roll (`POSTURE_EMA_ALPHA=0.25`)
+Il backend applica un filtro EMA al pitch e al roll (`POSTURE_EMA_ALPHA=0.5`)
 e un'isteresi predefinita di 2 gradi. Per esempio, una deviazione entra nella
 fascia moderata a 10 gradi ma ne esce soltanto quando rientra sotto 8 gradi.
 Questo evita oscillazioni rapide degli alert vicino alle soglie.
@@ -147,6 +157,18 @@ La calibrazione imposta contemporaneamente il riferimento di pitch e roll:
   "reference_roll_deg": 1.2
 }
 ```
+
+Il riferimento viene salvato in SQLite e ricaricato dopo i riavvii del
+backend. La calibrazione definisce lo zero del paziente: le soglie non sono
+angoli assoluti del sensore, ma deviazioni rispetto a questo riferimento.
+Il pulsante e attivo soltanto mentre la maglia del paziente selezionato sta
+trasmettendo dati recenti.
+
+La convenzione esposta alle interfacce e:
+
+- pitch positivo: inclinazione in avanti;
+- pitch negativo: inclinazione all'indietro;
+- pitch zero: posizione fissata durante la calibrazione.
 
 Le soglie pitch usano i campi storici `moderate_deviation_deg` e
 `marked_deviation_deg` per compatibilita con l'app. Le soglie roll sono
@@ -167,3 +189,8 @@ Per tornare al simulatore, avviare esplicitamente il profilo:
 ```bash
 docker compose --profile simulation up -d --build simulator
 ```
+
+Il simulatore ufficiale non usa topic alternativi: emula direttamente l'ESP32
+su `unisadiem/smartshirt/<device>/#` e attraversa lo stesso flusso Node-RED.
+Configurazione, scenari e controlli sono descritti in
+[`SMART_SHIRT_SIMULATOR.md`](SMART_SHIRT_SIMULATOR.md).

@@ -16,6 +16,8 @@ Simulatore Python ───┘                              │
 
 1. **Generazione dati**: la smart shirt reale e il simulatore sono sorgenti
    alternative. Non devono essere attivi insieme con lo stesso paziente/device.
+   Il simulatore emula il contratto MQTT dell'ESP32 e non bypassa Node-RED; e
+   disponibile solo tramite il profilo Docker Compose `simulation`.
 2. **Ingestion**: Mosquitto trasporta i messaggi MQTT. I topic raw sono
    imposti dall'ESP32 nel formato
    `unisadiem/smartshirt/<device>/<packet-type>`.
@@ -26,7 +28,8 @@ Simulatore Python ───┘                              │
    accelerometro, batteria, perdita dati e stato del sistema.
 4. **Logica e archiviazione**: FastAPI valida nuovamente il contratto, calcola
    orientamento/deviazione/alert, salva le serie elaborate in InfluxDB e usa
-   SQLite per utenti, sessioni e associazioni medico-paziente.
+   SQLite per utenti, sessioni, associazioni medico-paziente, inventario delle
+   magliette e storico delle loro assegnazioni.
 5. **Utenti finali**: l'app usa REST e WebSocket. Grafana legge InfluxDB ed e
    raggiungibile attraverso un gateway che accetta soltanto sessioni SmartBack
    appartenenti a medici verificati.
@@ -37,6 +40,38 @@ InfluxDB conserva lo storico con retention infinita. Grafana lo legge per la
 vista medica; paziente e medico nell'app passano invece dagli endpoint FastAPI,
 che applicano identita e associazione medico-paziente. Il contratto condiviso,
 gli intervalli e le risposte sono descritti in `docs/HISTORY_API.md`.
+
+Gli alert restano disponibili dalla prima rilevazione, ma vengono mostrati
+entro l'intervallo temporale selezionato e associati alla relativa sessione di
+monitoraggio. La sessione inizia con il primo campione valido, oppure con la
+ripresa successiva a un'interruzione dichiarata dal watchdog. Gli alert storici
+privi di identificativo sono conservati come `Sessione precedente`.
+
+## Portale medico e assegnazione delle magliette
+
+Dopo l'accesso il medico entra nella Home SmartBack. La Home interroga FastAPI
+e mostra solo i pazienti presenti in `doctor_patients`, oltre all'inventario
+`devices`. Ogni legame maglia-paziente produce una nuova riga in
+`device_assignments`: quando la maglia viene liberata la riga riceve
+`released_at`, senza essere cancellata.
+
+FastAPI pubblica le assegnazioni attive come configurazioni MQTT retained su
+`smartback/config/device-assignments/<device_id>`. Node-RED usa questa mappa per
+attribuire i pacchetti immutabili dell'ESP32 al paziente corretto prima della
+normalizzazione. Una maglia esplicitamente liberata continua a conservare il
+raw, ma non alimenta più il monitoraggio clinico del precedente paziente.
+
+L'inventario distingue `source_type=physical` e `source_type=simulated`.
+`tshirt002`, mostrata come `Maglia 2`, è la sorgente fisica reale disponibile.
+Le sorgenti simulate registrate dalla Home vengono pubblicate anche su
+`smartback/config/simulated-devices/<device_id>`; un solo processo simulatore
+può quindi emulare più maglie fittizie mantenendo topic e sequenze separati.
+
+Le rimozioni dal portale sono logiche. Rimuovere un paziente cancella soltanto
+il collegamento `doctor_patients`; account e serie InfluxDB restano intatti.
+Rimuovere una maglia valorizza `devices.archived_at` e chiude l'eventuale
+assegnazione attiva. Le righe di `device_assignments` e tutta la telemetria
+storica non vengono eliminate.
 
 L'ESP32/gateway deve occuparsi di acquisizione e trasmissione. Le soglie e i
 calcoli posturali restano nel backend, così possono cambiare senza riflash del
@@ -71,12 +106,17 @@ piu direttamente dagli endpoint FastAPI.
 ## Pitch e roll
 
 La calibrazione registra un riferimento indipendente per pitch e roll. Il
-motore calcola:
+backend lo conserva in SQLite per dispositivo e paziente, così non viene perso
+al riavvio. Il motore calcola:
 
 - `pitch_deviation_deg`;
 - `roll_deviation_deg`;
 - `dominant_axis`;
 - stato separato `pitch_status` e `roll_status`.
+
+Il pitch usa la convenzione clinica avanti positivo e indietro negativo. Le
+soglie sono applicate al valore assoluto della deviazione dalla calibrazione,
+non all'angolo grezzo del sensore.
 
 Per compatibilita, `deviation_deg` resta disponibile e contiene la deviazione
 con valore assoluto maggiore. Le soglie predefinite sono configurabili

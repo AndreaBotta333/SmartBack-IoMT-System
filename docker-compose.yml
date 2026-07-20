@@ -56,6 +56,7 @@ services:
       <<: *influx-env
       FLOWS: flows.json
       SMARTSHIRT_PATIENT_ID: ${SMARTSHIRT_PATIENT_ID:-patient-demo-001}
+      SIMULATOR_DEVICE_ID: ${SIMULATOR_DEVICE_ID:-tshirt-sim-001}
     volumes:
       - ./nodered/smartback:/data
     depends_on:
@@ -80,7 +81,7 @@ services:
       MQTT_POSTURE_TOPIC: smartback/normalized/posture
       MQTT_DEVICE_TOPIC: smartback/normalized/device
       MQTT_ALERT_TOPIC: smartback/alerts/posture
-      POSTURE_EMA_ALPHA: ${POSTURE_EMA_ALPHA:-0.25}
+      POSTURE_EMA_ALPHA: ${POSTURE_EMA_ALPHA:-0.5}
       POSTURE_HYSTERESIS_DEG: ${POSTURE_HYSTERESIS_DEG:-2}
       DATA_STALE_SECONDS: ${DATA_STALE_SECONDS:-10}
       MODERATE_DEVIATION_DEG: ${MODERATE_DEVIATION_DEG:-10}
@@ -88,6 +89,8 @@ services:
       MODERATE_ROLL_DEG: ${MODERATE_ROLL_DEG:-10}
       MARKED_ROLL_DEG: ${MARKED_ROLL_DEG:-20}
       MEDICAL_REGISTRATION_CODE: ${MEDICAL_REGISTRATION_CODE:-SMARTBACK-MED-2026}
+      GRAFANA_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GRAFANA_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-smartback-dev-password}
     depends_on:
       mosquitto:
         condition: service_healthy
@@ -98,19 +101,31 @@ services:
     profiles: ["simulation"]
     build: ./simulator
     container_name: smartback-simulator
-    restart: unless-stopped
+    # Evita dati sintetici dopo il riavvio di Docker quando si usa la maglia reale.
+    restart: "no"
+    volumes:
+      - ./simulator:/app:ro
     environment:
       MQTT_HOST: mosquitto
       MQTT_PORT: 1883
-      DEVICE_ID: ${SIMULATOR_DEVICE_ID:-howdy-sim-001}
-      PATIENT_ID: ${PATIENT_ID:-patient-demo-001}
-      PUBLISH_INTERVAL_SECONDS: 1
+      # Le maglie simulate vengono registrate dalla Home e attivate via MQTT.
+      # DEVICE_ID resta solo come compatibilita opzionale con il simulatore singolo.
+      DEVICE_ID: ${SIMULATOR_DEVICE_ID:-}
+      SIMULATION_SCENARIO: ${SIMULATION_SCENARIO:-day-cycle}
+      SAMPLING_FREQUENCY_HZ: ${SIMULATOR_SAMPLING_FREQUENCY_HZ:-25}
+      SAMPLES_PER_PACKET: ${SIMULATOR_SAMPLES_PER_PACKET:-16}
+      BATTERY_INTERVAL_SECONDS: ${SIMULATOR_BATTERY_INTERVAL_SECONDS:-30}
+      SIMULATION_SEED: ${SIMULATION_SEED:-20260717}
+      DROP_EVERY_N_PACKETS: ${SIMULATOR_DROP_EVERY_N_PACKETS:-0}
+      REPORT_DATALOSS_ON_DROP: ${SIMULATOR_REPORT_DATALOSS_ON_DROP:-true}
     depends_on:
       mosquitto:
         condition: service_healthy
 
   grafana:
-    image: grafana/grafana:latest
+    # Versione fissata: `latest` può cambiare i bundle frontend a un riavvio
+    # e lasciare il browser in un loop `chunkNotFound=true`.
+    image: grafana/grafana:13.0.0
     container_name: smartback-grafana
     restart: unless-stopped
     ports:
@@ -125,10 +140,17 @@ services:
       GF_AUTH_PROXY_HEADER_NAME: X-WEBAUTH-USER
       GF_AUTH_PROXY_HEADER_PROPERTY: email
       GF_AUTH_PROXY_AUTO_SIGN_UP: "true"
-      GF_AUTH_PROXY_ENABLE_LOGIN_TOKEN: "true"
+      # La sessione viene già verificata dal gateway SmartBack a ogni richiesta.
+      # Il login token Grafana genererebbe un ciclo di rotazione 401 nel client.
+      GF_AUTH_PROXY_ENABLE_LOGIN_TOKEN: "false"
+      GF_AUTH_PROXY_SYNC_TTL: "60"
       GF_USERS_AUTO_ASSIGN_ORG: "true"
       GF_USERS_AUTO_ASSIGN_ORG_ROLE: Viewer
       GF_EXPLORE_ENABLED: "false"
+      # Consente ai pannelli Text di usare link HTML stilizzati. I contenuti
+      # sono dashboard provisionate e non modificabili dagli utenti Viewer.
+      GF_PANELS_DISABLE_SANITIZE_HTML: "true"
+      GF_DASHBOARDS_MIN_REFRESH_INTERVAL: 1s
       GF_SERVER_ROOT_URL: ${GRAFANA_PUBLIC_URL:-http://localhost:3000/grafana/}
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
       GF_AUTH_SIGNOUT_REDIRECT_URL: ${GRAFANA_SIGNOUT_URL:-http://localhost:3000/grafana-logout}

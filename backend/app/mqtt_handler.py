@@ -15,6 +15,9 @@ from app.posture_service import PostureEngine
 
 
 BroadcastCallback = Callable[[dict[str, Any]], Awaitable[None]]
+DeviceSeenCallback = Callable[[str, str], None]
+AssignmentProvider = Callable[[], list[dict[str, str]]]
+SimulatedDeviceProvider = Callable[[], list[str]]
 
 
 class SmartBackMqttHandler:
@@ -30,6 +33,9 @@ class SmartBackMqttHandler:
         posture_engine: PostureEngine,
         influx: InfluxManager,
         broadcast: BroadcastCallback,
+        device_seen: DeviceSeenCallback | None = None,
+        assignment_provider: AssignmentProvider | None = None,
+        simulated_device_provider: SimulatedDeviceProvider | None = None,
     ) -> None:
         self.host = host
         self.port = port
@@ -40,6 +46,9 @@ class SmartBackMqttHandler:
         self.posture_engine = posture_engine
         self.influx = influx
         self.broadcast = broadcast
+        self.device_seen = device_seen
+        self.assignment_provider = assignment_provider
+        self.simulated_device_provider = simulated_device_provider
 
         self._lock = threading.RLock()
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -50,6 +59,7 @@ class SmartBackMqttHandler:
         self._last_posture_alert: dict[str, str | None] = {}
         self._last_sample_monotonic: dict[str, float] = {}
         self._device_patient: dict[str, str] = {}
+        self._monitoring_session: dict[str, str] = {}
         self._stale_alerted: set[str] = set()
 
     @property
@@ -94,6 +104,14 @@ class SmartBackMqttHandler:
             raise LookupError("No current sample is available for this device")
         return self.posture_engine.calibrate(device_id, sample)
 
+    def calibrate_from_sample(
+        self, device_id: str, sample: dict[str, Any]
+    ) -> dict[str, float | str]:
+        """Apply an immutable sample captured before a later confirmation."""
+        if sample.get("device_id") != device_id:
+            raise LookupError("The captured sample does not belong to this device")
+        return self.posture_engine.calibrate(device_id, dict(sample))
+
     def _on_connect(
         self,
         client: mqtt.Client,
@@ -104,6 +122,14 @@ class SmartBackMqttHandler:
     ) -> None:
         if reason_code == 0:
             client.subscribe([(self.posture_topic, 1), (self.device_topic, 1)])
+            if self.assignment_provider:
+                for assignment in self.assignment_provider():
+                    self.publish_device_assignment(
+                        assignment["device_id"], assignment["patient_id"]
+                    )
+            if self.simulated_device_provider:
+                for device_id in self.simulated_device_provider():
+                    self.publish_simulated_device(device_id, active=True)
             print(
                 f"MQTT connected; subscribed to {self.posture_topic} and {self.device_topic}",
                 flush=True,
@@ -111,11 +137,41 @@ class SmartBackMqttHandler:
         else:
             print(f"MQTT connection failed: {reason_code}", flush=True)
 
+    def publish_device_assignment(
+        self, device_id: str, patient_id: str | None
+    ) -> None:
+        if self._client is None:
+            return
+        payload = {
+            "device_id": device_id,
+            "patient_id": patient_id,
+            "active": patient_id is not None,
+            "updated_at": int(datetime.now(timezone.utc).timestamp() * 1000),
+        }
+        self._client.publish(
+            f"smartback/config/device-assignments/{device_id}",
+            json.dumps(payload),
+            qos=1,
+            retain=True,
+        )
+
+    def publish_simulated_device(self, device_id: str, *, active: bool) -> None:
+        if self._client is None:
+            return
+        self._client.publish(
+            f"smartback/config/simulated-devices/{device_id}",
+            json.dumps({"device_id": device_id, "active": active}),
+            qos=1,
+            retain=True,
+        )
+
     def _on_message(self, client: mqtt.Client, userdata: Any, message: mqtt.MQTTMessage) -> None:
         try:
             raw_payload = json.loads(message.payload.decode("utf-8"))
             if message.topic == self.posture_topic:
                 payload = NormalizedPostureSample.model_validate(raw_payload).model_dump()
+                if self.device_seen:
+                    self.device_seen(str(payload["device_id"]), str(payload["quality"]))
                 self._mark_stream_active(client, payload)
                 processed = self.posture_engine.process(payload)
                 self.influx.persist_posture(processed)
@@ -126,6 +182,8 @@ class SmartBackMqttHandler:
                     asyncio.run_coroutine_threadsafe(self.broadcast(processed), self._loop)
             elif message.topic == self.device_topic:
                 payload = NormalizedDeviceStatus.model_validate(raw_payload).model_dump()
+                if self.device_seen:
+                    self.device_seen(str(payload["device_id"]), str(payload["quality"]))
                 with self._lock:
                     self._latest_device = payload
         except Exception as exc:
@@ -138,6 +196,8 @@ class SmartBackMqttHandler:
         with self._lock:
             now = time.monotonic()
             previous_seen = self._last_sample_monotonic.get(device_id, now)
+            if device_id not in self._monitoring_session or device_id in self._stale_alerted:
+                self._monitoring_session[device_id] = self._new_session_id()
             self._last_sample_monotonic[device_id] = now
             self._device_patient[device_id] = patient_id
             if device_id in self._stale_alerted:
@@ -151,6 +211,15 @@ class SmartBackMqttHandler:
                 active=False,
                 silent_seconds=recovery_silence,
             )
+
+    @staticmethod
+    def _new_session_id() -> str:
+        """Return a sortable identifier representing the session start instant."""
+        return (
+            datetime.now(timezone.utc)
+            .isoformat(timespec="milliseconds")
+            .replace("+00:00", "Z")
+        )
 
     def _publish_posture_transition(
         self,
@@ -183,6 +252,7 @@ class SmartBackMqttHandler:
             "roll_deviation_deg": processed["roll_deviation_deg"],
             "dominant_axis": processed["dominant_axis"],
             "duration_seconds": processed["deviation_duration_seconds"],
+            "session_id": self._monitoring_session.get(device_id),
         }
         client.publish(self.alert_topic, json.dumps(payload), qos=1)
         self._last_posture_alert[device_id] = current_alert
@@ -211,6 +281,7 @@ class SmartBackMqttHandler:
             ),
             "active": active,
             "silent_seconds": round(silent_seconds, 1),
+            "session_id": self._monitoring_session.get(device_id),
         }
         client.publish(self.alert_topic, json.dumps(payload), qos=1)
 

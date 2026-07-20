@@ -45,8 +45,39 @@ class InfluxManager:
             .field("roll_deviation_deg", sample["roll_deviation_deg"])
             .field("deviation_deg", sample["deviation_deg"])
             .field("deviation_duration_seconds", sample["deviation_duration_seconds"])
+            .field(
+                "pitch_deviation_duration_seconds",
+                sample["pitch_deviation_duration_seconds"],
+            )
+            .field(
+                "roll_deviation_duration_seconds",
+                sample["roll_deviation_duration_seconds"],
+            )
             .field("alert_active", bool(sample["alert"]))
             .time(int(sample["timestamp"]), WritePrecision.MS)
+        )
+        self.write_api.write(bucket=self.bucket, org=self.org, record=point)
+
+    def persist_calibration_reference(
+        self,
+        *,
+        device_id: str,
+        patient_code: str,
+        reference_pitch_deg: float,
+        reference_roll_deg: float,
+        selected_pitch_deg: float,
+        selected_roll_deg: float,
+    ) -> None:
+        """Write the selected reference immediately, independently of the next sample."""
+        point = (
+            Point("posture")
+            .tag("device_id", device_id)
+            .tag("patient_id", patient_code)
+            .field("reference_pitch_deg", float(reference_pitch_deg))
+            .field("reference_roll_deg", float(reference_roll_deg))
+            .field("calibration_selected_pitch_deg", float(selected_pitch_deg))
+            .field("calibration_selected_roll_deg", float(selected_roll_deg))
+            .time(datetime.now(timezone.utc), WritePrecision.MS)
         )
         self.write_api.write(bucket=self.bucket, org=self.org, record=point)
 
@@ -204,6 +235,7 @@ class InfluxManager:
         alerts = self.query_alert_history(
             patient_code, start=start, end=end, limit=min(limit, 200)
         )
+        alert_sessions = self.group_alerts_by_session(alerts)
         incorrect = sum(1 for row in rows if row["is_incorrect"])
         pitch_values = [abs(float(row["pitch_deviation_deg"])) for row in rows]
         roll_values = [abs(float(row["roll_deviation_deg"])) for row in rows]
@@ -215,6 +247,7 @@ class InfluxManager:
             "availability": availability,
             "gaps": gaps,
             "alerts": alerts,
+            "alert_sessions": alert_sessions,
             "summary": {
                 "samples": len(rows),
                 "correct_percentage": round((len(rows) - incorrect) * 100 / len(rows), 1) if rows else 0,
@@ -278,6 +311,39 @@ union(tables: [firstSample, lastSample])'''
                     "category": record.values.get("category"),
                     "severity": record.values.get("severity"),
                     "active": bool(record.get_value()),
+                    "session_id": record.values.get("session_id"),
                 })
         alerts.sort(key=lambda item: item["timestamp"], reverse=True)
         return alerts[:limit]
+
+    @staticmethod
+    def group_alerts_by_session(
+        alerts: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Group interval-filtered alerts without discarding legacy records."""
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for alert in alerts:
+            session_id = str(alert.get("session_id") or "legacy")
+            grouped.setdefault(session_id, []).append(alert)
+        sessions = [
+            {
+                "session_id": session_id,
+                "label": (
+                    "Sessione precedente"
+                    if session_id == "legacy"
+                    else session_id
+                ),
+                "alert_count": len(items),
+                "alerts": sorted(
+                    items,
+                    key=lambda item: item["timestamp"],
+                    reverse=True,
+                ),
+            }
+            for session_id, items in grouped.items()
+        ]
+        return sorted(
+            sessions,
+            key=lambda session: session["alerts"][0]["timestamp"],
+            reverse=True,
+        )
