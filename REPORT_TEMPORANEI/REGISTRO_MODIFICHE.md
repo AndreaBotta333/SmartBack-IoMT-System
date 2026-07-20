@@ -579,3 +579,20 @@ Introdurre una modalità notturna attivabile dal Paziente, mostrare in tempo rea
 
 - Controllo TypeScript completato senza errori nel container Expo.
 - Bundle Android Expo generato correttamente con i nuovi grafici.
+
+## 20 luglio 2026 — Riferimenti di calibrazione nei grafici live
+
+### Modifiche
+
+- Aggiunti nella sezione diurna due riquadri riepilogativi per il riferimento calibrato di pitch e per quello di roll.
+- Applicati i riquadri sia alla pagina Paziente sia alla scheda del Paziente consultata dal Medico.
+- Modificati i grafici in tempo reale per mostrare l'angolo effettivamente rilevato, coerentemente con i grafici Grafana.
+- Aggiunta in ciascun grafico una linea orizzontale corrispondente al riferimento di calibrazione corrente.
+- I valori e le linee usano `reference_pitch_deg` e `reference_roll_deg` ricevuti dal backend nei campioni WebSocket.
+- Una calibrazione eseguita da Grafana viene quindi riflessa nell'app a partire dal campione posturale successivo ricevuto dalla maglia.
+- Distinti graficamente il valore rilevato e la calibrazione mediante colori e legenda.
+
+### Verifiche
+
+- Controllo TypeScript completato senza errori nel container Expo.
+- Bundle Android Expo generato correttamente con riquadri e riferimenti di calibrazione.
