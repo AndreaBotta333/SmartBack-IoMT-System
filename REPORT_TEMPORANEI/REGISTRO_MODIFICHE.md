@@ -479,3 +479,21 @@ Introdurre una modalità notturna attivabile dal Paziente, mostrare in tempo rea
 - Controllo TypeScript completato senza errori nel container Expo.
 - Bundle Android Expo generato correttamente.
 - Verificato che il Medico utilizzi gli endpoint notturni esclusivamente in lettura e che i comandi di avvio/arresto restino disponibili solo al Paziente.
+
+## 20 luglio 2026 — Grafici storici per assi e riepilogo dispositivo
+
+### Modifiche
+
+- Sostituito l'elenco testuale dello storico notturno con un grafico temporale coerente con la presentazione dello storico diurno.
+- Il grafico notturno mostra, per tutte le sessioni comprese nella finestra selezionata, la percentuale di tempo trascorsa in posizione supina, prona, in decubito destro e in decubito sinistro.
+- Mantenuti i filtri notturni per 7, 30 e 90 giorni oppure per tutte le sessioni disponibili.
+- Suddiviso lo storico diurno in due grafici distinti: `Deviazione pitch` e `Deviazione roll`, utilizzando i corrispondenti campi persistiti in InfluxDB.
+- Conservata sui due grafici diurni la distinzione visiva tra campioni corretti e scorretti.
+- Spostate le informazioni su tipo di dispositivo e batteria subito sotto il nome del Paziente.
+- Applicato il nuovo riepilogo sia all'area personale del Paziente sia alla scheda aperta dal Medico.
+- La batteria viene mostrata solo quando lo stato ricevuto appartiene allo stesso dispositivo visualizzato, evitando associazioni errate tra pazienti.
+
+### Verifiche
+
+- Controllo TypeScript completato senza errori nel container Expo.
+- Bundle Android Expo generato correttamente con i nuovi grafici.

@@ -34,7 +34,7 @@ type PostureSample = {
 };
 type DeviceStatus = { device_id: string; state_of_charge?: number; charging?: boolean };
 type AppScreen = "dashboard" | "profile" | "password" | "settings";
-type HistorySample = { timestamp: string; deviation_deg: number; posture_status: PostureStatus; is_incorrect: boolean };
+type HistorySample = { timestamp: string; deviation_deg: number; pitch_deviation_deg: number; roll_deviation_deg: number; posture_status: PostureStatus; is_incorrect: boolean };
 type PatientStatistics = { samples: number; correct_percentage: number; incorrect_percentage: number; average_deviation_deg: number; maximum_deviation_deg: number };
 type HistoryPeriod = 60 | 360 | 1440 | 10080;
 type NightHistoryPeriod = 7 | 30 | 90 | 0;
@@ -316,6 +316,10 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
   const latest = visibleSamples[visibleSamples.length - 1];
   const posture = latest ? postureStyles[latest.posture_status] : null;
   const monitoredUser = session.user.role === "doctor" ? selectedPatient : session.user;
+  const monitoredDeviceId = latest?.device_id ?? nightStatus?.session?.device_id ?? null;
+  const monitoredBattery = monitoredDeviceId && device?.device_id === monitoredDeviceId && device.state_of_charge != null
+    ? Math.round(device.state_of_charge)
+    : null;
 
   const refreshDevice = useCallback(async () => {
     try { setDevice(await api<DeviceStatus>("/api/v1/device/latest")); } catch { /* optional */ }
@@ -496,6 +500,7 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
           <Text style={[styles.welcome, dark && styles.textDark]}>Ciao, {session.user.name.split(" ")[0]}</Text>
           <Text style={[styles.roleCaption, dark && styles.mutedDark]}>{roleLabel} · {session.user.role === "doctor" ? "Gestisci i pazienti associati" : "Il tuo monitoraggio posturale"}</Text>
         </View>
+        {session.user.role === "patient" && <PatientDeviceSummary deviceId={monitoredDeviceId} battery={monitoredBattery} />}
 
         {session.user.role === "patient" && (
           <NightModePanel status={nightStatus} sample={nightSample} clock={nightClock} statusSyncedAt={nightStatusSyncedAt} positionSince={nightPositionSince} busy={nightBusy} error={nightError} onToggle={toggleNightMode} />
@@ -516,6 +521,7 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
         ) : !latest || !posture ? (
           <>
             {session.user.role === "doctor" && <Pressable onPress={() => setSelectedPatient(null)} style={styles.patientStrip}><Text style={styles.backArrow}>‹</Text><View style={{ flex: 1 }}><Text style={styles.overline}>PAZIENTE SELEZIONATO</Text><Text style={styles.patientName}>{selectedPatient?.name}</Text></View><Text style={styles.patientCode}>{selectedPatient?.patient_code}</Text></Pressable>}
+            {session.user.role === "doctor" && <PatientDeviceSummary deviceId={monitoredDeviceId} battery={monitoredBattery} />}
             {session.user.role === "doctor" && <MonitoringSectionHeader mode="day" title="Monitoraggio diurno" subtitle="Dati posturali in tempo reale e storico completo" />}
             <View style={[styles.waitingCard, dark && styles.surfaceDark]}><ActivityIndicator color="#087f6a" size="large" /><Text style={[styles.waitingTitle, dark && styles.textDark]}>Nessun dato in tempo reale</Text><Text style={[styles.muted, dark && styles.mutedDark]}>Questo paziente non ha ancora un dispositivo attivo.</Text></View>
             <HistoricalInsights session={session} patient={selectedPatient} />
@@ -526,6 +532,7 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
             {session.user.role === "doctor" && (
               <Pressable onPress={() => setSelectedPatient(null)} style={styles.patientStrip}><Text style={styles.backArrow}>‹</Text><View style={{ flex: 1 }}><Text style={styles.overline}>PAZIENTE SELEZIONATO</Text><Text style={styles.patientName}>{selectedPatient?.name}</Text></View><Text style={styles.patientCode}>{selectedPatient?.patient_code}</Text></Pressable>
             )}
+            {session.user.role === "doctor" && <PatientDeviceSummary deviceId={monitoredDeviceId} battery={monitoredBattery} />}
             {session.user.role === "doctor" && <MonitoringSectionHeader mode="day" title="Monitoraggio diurno" subtitle="Dati posturali in tempo reale e storico completo" />}
             <View style={[styles.postureCard, { backgroundColor: posture.pale }]}>
               <View style={styles.postureTop}><UserAvatar user={monitoredUser} size={43} accentColor={posture.color} /><View style={{ flex: 1 }}><Text style={[styles.postureLabel, { color: posture.color }]}>{posture.label}</Text><Text style={styles.postureDetail}>{posture.detail}</Text></View></View>
@@ -541,10 +548,6 @@ function Dashboard({ session, onSessionUpdate, onLogout }: { session: Session; o
               <LineChart data={chartData} width={Math.max(280, width - 56)} height={190} withDots={false} withOuterLines={false} yAxisSuffix="°" chartConfig={{ backgroundGradientFrom: dark ? "#162521" : "#fff", backgroundGradientTo: dark ? "#162521" : "#fff", decimalPlaces: 0, color: (opacity = 1) => `rgba(8,127,106,${opacity})`, labelColor: (opacity = 1) => dark ? `rgba(205,225,219,${opacity})` : `rgba(71,84,103,${opacity})`, propsForBackgroundLines: { stroke: dark ? "#345049" : "#e4eeeb", strokeDasharray: "4 4" } }} bezier style={styles.chart} />
             </View>
             <HistoricalInsights session={session} patient={selectedPatient} />
-            <View style={styles.infoGrid}>
-              <InfoCard icon="▣" label="Dispositivo" value={latest.device_id} />
-              <InfoCard icon="ϟ" label="Batteria" value={device?.state_of_charge != null ? `${Math.round(device.state_of_charge)}%` : "—"} />
-            </View>
             {session.user.role === "doctor" && selectedPatient && <DoctorNightSection session={session} patient={selectedPatient} status={nightStatus} sample={nightSample} clock={nightClock} statusSyncedAt={nightStatusSyncedAt} positionSince={nightPositionSince} error={nightError} />}
             {session.user.role === "patient" && (
               <Pressable onPress={calibrate} disabled={calibrating} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>{calibrating ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Calibra postura di riferimento</Text>}</Pressable>
@@ -630,6 +633,7 @@ function DoctorNightSection({ session, patient, status, sample, clock, statusSyn
 
 function NightHistoryPanel({ session, patient, refreshKey }: { session: Session; patient: DoctorPatient; refreshKey: string }) {
   const { dark } = useAppTheme();
+  const { width } = useWindowDimensions();
   const [period, setPeriod] = useState<NightHistoryPeriod>(30);
   const [sessions, setSessions] = useState<NightSession[]>([]);
   const [loading, setLoading] = useState(true);
@@ -655,21 +659,32 @@ function NightHistoryPanel({ session, patient, refreshKey }: { session: Session;
     return sessions.filter((item) => Date.parse(item.started_at) >= cutoff);
   }, [period, sessions]);
 
+  const chronologicalSessions = [...visibleSessions].reverse();
+  const nightLabels = chronologicalSessions.length
+    ? chronologicalSessions.map((item, index) => index === 0 || index === chronologicalSessions.length - 1 ? new Date(item.started_at).toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" }) : "")
+    : ["—"];
+  const positionPercentage = (item: NightSession, position: keyof Pick<NightSummary, "supine_seconds" | "prone_seconds" | "right_side_seconds" | "left_side_seconds">) => {
+    const total = item.summary.supine_seconds + item.summary.prone_seconds + item.summary.right_side_seconds + item.summary.left_side_seconds + item.summary.unknown_seconds;
+    return total > 0 ? Math.round(item.summary[position] / total * 100) : 0;
+  };
+  const nightChartData = {
+    labels: nightLabels,
+    datasets: [
+      { data: chronologicalSessions.length ? chronologicalSessions.map((item) => positionPercentage(item, "supine_seconds")) : [0], color: () => NIGHT_POSITIONS.supine.color, strokeWidth: 2 },
+      { data: chronologicalSessions.length ? chronologicalSessions.map((item) => positionPercentage(item, "prone_seconds")) : [0], color: () => NIGHT_POSITIONS.prone.color, strokeWidth: 2 },
+      { data: chronologicalSessions.length ? chronologicalSessions.map((item) => positionPercentage(item, "right_side_seconds")) : [0], color: () => NIGHT_POSITIONS.right_side.color, strokeWidth: 2 },
+      { data: chronologicalSessions.length ? chronologicalSessions.map((item) => positionPercentage(item, "left_side_seconds")) : [0], color: () => NIGHT_POSITIONS.left_side.color, strokeWidth: 2 },
+    ],
+  };
+
   return (
     <View style={[styles.nightHistoryCard, dark && styles.surfaceDark]}>
       <View style={styles.historyHeading}><View><Text style={[styles.sectionTitle, dark && styles.textDark]}>Storico notturno</Text><Text style={[styles.mutedSmall, dark && styles.mutedDark]}>Tutte le sessioni nella finestra selezionata</Text></View>{loading && <ActivityIndicator color="#6f9ceb" size="small" />}</View>
       <View style={styles.periodRow}>{([{ value: 7, label: "7 giorni" }, { value: 30, label: "30 giorni" }, { value: 90, label: "90 giorni" }, { value: 0, label: "Tutto" }] as { value: NightHistoryPeriod; label: string }[]).map((option) => <Pressable key={option.value} onPress={() => setPeriod(option.value)} style={[styles.periodButton, styles.nightPeriodButton, period === option.value && styles.nightPeriodButtonSelected]}><Text style={[styles.periodText, period === option.value && styles.periodTextSelected]}>{option.label}</Text></Pressable>)}</View>
-      {!loading && visibleSessions.length === 0 ? <Text style={styles.nightHistoryEmpty}>Nessuna sessione notturna nel periodo selezionato.</Text> : visibleSessions.map((item) => {
-        const summary = item.summary;
-        const positions = [
-          { label: "supino", value: summary.supine_seconds, color: NIGHT_POSITIONS.supine.color },
-          { label: "prono", value: summary.prone_seconds, color: NIGHT_POSITIONS.prone.color },
-          { label: "decubito destro", value: summary.right_side_seconds, color: NIGHT_POSITIONS.right_side.color },
-          { label: "decubito sinistro", value: summary.left_side_seconds, color: NIGHT_POSITIONS.left_side.color },
-        ];
-        const dominant = positions.reduce((best, current) => current.value > best.value ? current : best);
-        return <View key={item.id} style={[styles.nightHistoryItem, dark && styles.surfaceDarkAlt]}><View style={styles.nightHistoryItemTop}><View><Text style={[styles.nightHistoryDate, dark && styles.textDark]}>{new Date(item.started_at).toLocaleDateString("it-IT", { day: "2-digit", month: "long", year: "numeric" })}</Text><Text style={[styles.mutedSmall, dark && styles.mutedDark]}>{new Date(item.started_at).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })} · {formatDuration(item.duration_seconds)}</Text></View><View style={[styles.nightHistoryStatus, item.status === "active" && styles.nightHistoryStatusActive]}><Text style={[styles.nightHistoryStatusText, item.status === "active" && styles.nightHistoryStatusTextActive]}>{item.status === "active" ? "in corso" : "completata"}</Text></View></View><View style={styles.nightHistoryDominant}><View style={[styles.nightHistoryDot, { backgroundColor: dominant.color }]} /><Text style={[styles.nightHistoryDominantText, dark && styles.mutedDark]}>Posizione prevalente: {dominant.label}</Text></View><Text style={[styles.nightHistoryChanges, dark && styles.mutedDark]}>Cambi posizione: {summary.position_changes}</Text></View>;
-      })}
+      <View style={styles.nightChartLegend}><View style={styles.legendItem}><View style={[styles.historyLegendDot, { backgroundColor: NIGHT_POSITIONS.supine.color }]} /><Text style={styles.legendText}>supino</Text></View><View style={styles.legendItem}><View style={[styles.historyLegendDot, { backgroundColor: NIGHT_POSITIONS.prone.color }]} /><Text style={styles.legendText}>prono</Text></View><View style={styles.legendItem}><View style={[styles.historyLegendDot, { backgroundColor: NIGHT_POSITIONS.right_side.color }]} /><Text style={styles.legendText}>dec. destro</Text></View><View style={styles.legendItem}><View style={[styles.historyLegendDot, { backgroundColor: NIGHT_POSITIONS.left_side.color }]} /><Text style={styles.legendText}>dec. sinistro</Text></View></View>
+      <LineChart data={nightChartData} width={Math.max(280, width - 56)} height={210} withDots withOuterLines={false} yAxisSuffix="%" chartConfig={{ backgroundGradientFrom: dark ? "#162521" : "#fff", backgroundGradientTo: dark ? "#162521" : "#fff", decimalPlaces: 0, color: (opacity = 1) => `rgba(111,156,235,${opacity})`, labelColor: (opacity = 1) => dark ? `rgba(205,225,219,${opacity})` : `rgba(71,84,103,${opacity})`, propsForDots: { r: "3", strokeWidth: "1", stroke: dark ? "#162521" : "#fff" }, propsForBackgroundLines: { stroke: dark ? "#345049" : "#e4eeeb", strokeDasharray: "4 4" } }} style={styles.nightHistoryChart} />
+      <Text style={[styles.nightChartCaption, dark && styles.mutedDark]}>{visibleSessions.length} {visibleSessions.length === 1 ? "sessione rappresentata" : "sessioni rappresentate"} · percentuale del tempo per posizione</Text>
+      {!loading && visibleSessions.length === 0 && <Text style={styles.nightHistoryEmpty}>Nessuna sessione notturna nel periodo selezionato.</Text>}
       {error ? <Text style={styles.formError}>{error}</Text> : null}
     </View>
   );
@@ -708,11 +723,7 @@ function HistoricalInsights({ session, patient }: { session: Session; patient: D
 
   useEffect(() => { loadHistory(); }, [loadHistory]);
 
-  const chartSamples = history.length ? history : [{ timestamp: new Date().toISOString(), deviation_deg: 0, posture_status: "neutral" as PostureStatus, is_incorrect: false }];
-  const historyChartData = {
-    labels: chartSamples.map((sample, index) => index === 0 || index === chartSamples.length - 1 ? formatHistoryLabel(sample.timestamp, period) : ""),
-    datasets: [{ data: chartSamples.map((sample) => sample.deviation_deg), color: () => "#25a995", strokeWidth: 2 }],
-  };
+  const chartSamples: HistorySample[] = history.length ? history : [{ timestamp: new Date().toISOString(), deviation_deg: 0, pitch_deviation_deg: 0, roll_deviation_deg: 0, posture_status: "neutral", is_incorrect: false }];
 
   return (
     <>
@@ -720,17 +731,8 @@ function HistoricalInsights({ session, patient }: { session: Session; patient: D
         <View style={styles.historyHeading}><View><Text style={[styles.sectionTitle, dark && styles.textDark]}>Storico diurno</Text><Text style={[styles.mutedSmall, dark && styles.mutedDark]}>Posture corrette e scorrette nell'intera finestra selezionata</Text></View>{loading && <ActivityIndicator color="#087f6a" size="small" />}</View>
         <View style={styles.periodRow}>{HISTORY_PERIODS.map((option) => <Pressable key={option.minutes} onPress={() => setPeriod(option.minutes)} style={[styles.periodButton, period === option.minutes && styles.periodButtonSelected]}><Text style={[styles.periodText, period === option.minutes && styles.periodTextSelected]}>{option.label}</Text></Pressable>)}</View>
         <View style={styles.historyLegend}><View style={styles.legendItem}><View style={[styles.historyLegendDot, styles.correctDot]} /><Text style={styles.legendText}>Corretta</Text></View><View style={styles.legendItem}><View style={[styles.historyLegendDot, styles.incorrectDot]} /><Text style={styles.legendText}>Scorretta</Text></View></View>
-        <LineChart
-          data={historyChartData}
-          width={Math.max(280, width - 56)}
-          height={205}
-          withDots
-          withOuterLines={false}
-          yAxisSuffix="°"
-          getDotColor={(_, index) => chartSamples[index]?.is_incorrect ? "#d92d20" : "#25a995"}
-          chartConfig={{ backgroundGradientFrom: dark ? "#162521" : "#fff", backgroundGradientTo: dark ? "#162521" : "#fff", decimalPlaces: 0, color: (opacity = 1) => `rgba(37,169,149,${opacity})`, labelColor: (opacity = 1) => dark ? `rgba(205,225,219,${opacity})` : `rgba(71,84,103,${opacity})`, propsForDots: { r: "4", strokeWidth: "1", stroke: dark ? "#162521" : "#fff" }, propsForBackgroundLines: { stroke: dark ? "#345049" : "#e4eeeb", strokeDasharray: "4 4" } }}
-          style={styles.historyChart}
-        />
+        <HistoryAxisChart title="Deviazione pitch" samples={chartSamples} period={period} field="pitch_deviation_deg" color="#315f9a" width={Math.max(280, width - 56)} />
+        <HistoryAxisChart title="Deviazione roll" samples={chartSamples} period={period} field="roll_deviation_deg" color="#8b5fbf" width={Math.max(280, width - 56)} />
         {!loading && history.length === 0 && <Text style={styles.noHistoryText}>Nessun dato disponibile nel periodo selezionato.</Text>}
         {error ? <Text style={styles.formError}>{error}</Text> : null}
       </View>
@@ -750,6 +752,15 @@ function HistoricalInsights({ session, patient }: { session: Session; patient: D
 
     </>
   );
+}
+
+function HistoryAxisChart({ title, samples, period, field, color, width }: { title: string; samples: HistorySample[]; period: HistoryPeriod; field: "pitch_deviation_deg" | "roll_deviation_deg"; color: string; width: number }) {
+  const { dark } = useAppTheme();
+  const data = {
+    labels: samples.map((sample, index) => index === 0 || index === samples.length - 1 ? formatHistoryLabel(sample.timestamp, period) : ""),
+    datasets: [{ data: samples.map((sample) => sample[field]), color: () => color, strokeWidth: 2 }],
+  };
+  return <View style={styles.axisChartBlock}><View style={styles.axisChartTitleRow}><View style={[styles.axisChartMarker, { backgroundColor: color }]} /><Text style={[styles.axisChartTitle, dark && styles.textDark]}>{title}</Text></View><LineChart data={data} width={width} height={190} withDots withOuterLines={false} yAxisSuffix="°" getDotColor={(_, index) => samples[index]?.is_incorrect ? "#d92d20" : "#25a995"} chartConfig={{ backgroundGradientFrom: dark ? "#162521" : "#fff", backgroundGradientTo: dark ? "#162521" : "#fff", decimalPlaces: 0, color: () => color, labelColor: (opacity = 1) => dark ? `rgba(205,225,219,${opacity})` : `rgba(71,84,103,${opacity})`, propsForDots: { r: "4", strokeWidth: "1", stroke: dark ? "#162521" : "#fff" }, propsForBackgroundLines: { stroke: dark ? "#345049" : "#e4eeeb", strokeDasharray: "4 4" } }} style={styles.historyChart} /></View>;
 }
 
 function Statistic({ label, value, color }: { label: string; value: string; color: string }) {
@@ -990,9 +1001,9 @@ function Metric({ label, value }: { label: string; value: string }) {
   return <View style={[styles.metricCard, dark && styles.surfaceDark]}><Text style={[styles.metricLabel, dark && styles.mutedDark]}>{label}</Text><Text style={[styles.metricValue, dark && styles.textDark]}>{value}</Text></View>;
 }
 
-function InfoCard({ icon, label, value }: { icon: string; label: string; value: string }) {
+function PatientDeviceSummary({ deviceId, battery }: { deviceId: string | null; battery: number | null }) {
   const { dark } = useAppTheme();
-  return <View style={[styles.infoCard, dark && styles.surfaceDark]}><Text style={styles.infoIcon}>{icon}</Text><View style={{ flex: 1 }}><Text style={[styles.metricLabel, dark && styles.mutedDark]}>{label}</Text><Text numberOfLines={1} style={[styles.infoValue, dark && styles.textDark]}>{value}</Text></View></View>;
+  return <View style={[styles.deviceSummary, dark && styles.surfaceDark]}><View style={styles.deviceSummaryItem}><Text style={styles.deviceSummaryIcon}>▣</Text><View style={{ flex: 1 }}><Text style={[styles.metricLabel, dark && styles.mutedDark]}>Tipo dispositivo</Text><Text numberOfLines={1} style={[styles.deviceSummaryValue, dark && styles.textDark]}>{deviceId ? `Smart t-shirt · ${deviceId}` : "Non rilevato"}</Text></View></View><View style={styles.deviceSummaryDivider} /><View style={styles.deviceSummaryItem}><Text style={styles.deviceSummaryIcon}>ϟ</Text><View style={{ flex: 1 }}><Text style={[styles.metricLabel, dark && styles.mutedDark]}>Batteria</Text><Text style={[styles.deviceSummaryValue, dark && styles.textDark]}>{battery != null ? `${battery}%` : "—"}</Text></View></View></View>;
 }
 
 function formatHistoryLabel(timestamp: string, period: HistoryPeriod) {
@@ -1054,10 +1065,10 @@ const styles = StyleSheet.create({
   deviationRow: { borderTopWidth: 1, borderTopColor: "rgba(30,70,60,.12)", paddingTop: 14, flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" }, deviationCaption: { color: "#66817b", fontSize: 8, fontWeight: "900", letterSpacing: 0.7, flex: 1 }, deviationValue: { fontSize: 33, lineHeight: 37, fontWeight: "900", letterSpacing: -1 },
   metricsRow: { flexDirection: "row", gap: 9 }, metricCard: { flex: 1, backgroundColor: "#fff", padding: 13, borderRadius: 15 }, metricLabel: { color: "#78908a", fontSize: 10, fontWeight: "700" }, metricValue: { color: "#153d35", fontSize: 18, fontWeight: "900", marginTop: 4 },
   whiteCard: { backgroundColor: "#fff", borderRadius: 21, paddingTop: 17, overflow: "hidden" }, sectionHeading: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", paddingHorizontal: 17 }, sectionTitle: { color: "#153d35", fontSize: 16, fontWeight: "900" }, mutedSmall: { color: "#78908a", fontSize: 10, marginTop: 3 }, legendDot: { flexDirection: "row", alignItems: "center", gap: 5 }, miniDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#087f6a" }, legendText: { color: "#78908a", fontSize: 9 }, chart: { marginLeft: -13, marginTop: 8 },
-  infoGrid: { flexDirection: "row", gap: 9 }, infoCard: { flex: 1, backgroundColor: "#fff", borderRadius: 16, padding: 13, flexDirection: "row", alignItems: "center", gap: 9 }, infoIcon: { color: "#20a38c", fontSize: 20 }, infoValue: { color: "#153d35", fontWeight: "800", fontSize: 12, marginTop: 3 },
+  deviceSummary: { backgroundColor: "#fff", borderRadius: 16, padding: 12, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#dceae6" }, deviceSummaryItem: { flex: 1, flexDirection: "row", alignItems: "center", gap: 9 }, deviceSummaryIcon: { color: "#20a38c", fontSize: 19 }, deviceSummaryValue: { color: "#153d35", fontWeight: "800", fontSize: 11, marginTop: 3 }, deviceSummaryDivider: { width: 1, height: 34, backgroundColor: "#dceae6", marginHorizontal: 11 },
   notificationCard: { backgroundColor: "#dff5f0", borderRadius: 17, padding: 14, flexDirection: "row", alignItems: "center", gap: 12 }, bellCircle: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#b9e9df", alignItems: "center", justifyContent: "center" }, bell: { color: "#087f6a", fontSize: 17 }, notificationTitle: { color: "#153d35", fontWeight: "900", fontSize: 13 }, notificationText: { color: "#56766f", fontSize: 10, lineHeight: 15, marginTop: 2 }, message: { color: "#42655f", textAlign: "center", fontSize: 11 }, disclaimer: { color: "#8ba09b", textAlign: "center", fontSize: 9, marginTop: 4 },
   nightCard: { borderRadius: 24, padding: 18, backgroundColor: "#16233a", borderWidth: 1, borderColor: "#2d4163", gap: 15, shadowColor: "#07101f", shadowOpacity: 0.18, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 4 }, nightCardActive: { borderColor: "#3d806f" }, nightCardDark: { backgroundColor: "#111d2d", borderColor: "#294b46" }, nightHeader: { flexDirection: "row", alignItems: "center", gap: 11 }, nightMoon: { width: 43, height: 43, borderRadius: 22, backgroundColor: "#243b60", alignItems: "center", justifyContent: "center" }, nightMoonText: { color: "#c8dcff", fontSize: 28, lineHeight: 31 }, nightTitle: { color: "#f1f6ff", fontSize: 18, fontWeight: "900" }, nightSubtitle: { color: "#9eb0cc", fontSize: 10, marginTop: 3 }, nightLiveBadge: { flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: "#173c34", borderRadius: 12, paddingHorizontal: 9, paddingVertical: 6 }, nightLiveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#3ec6ae" }, nightLiveText: { color: "#75e0cc", fontSize: 8, fontWeight: "900", letterSpacing: 0.8 }, nightDescription: { color: "#b2bfd2", fontSize: 11, lineHeight: 17 }, nightPositionBox: { backgroundColor: "#101a2b", borderRadius: 18, padding: 17, alignItems: "center", borderWidth: 1, borderColor: "#263a5a" }, nightOverline: { color: "#7e91af", fontSize: 8, fontWeight: "900", letterSpacing: 1 }, nightPosition: { fontSize: 23, fontWeight: "900", marginTop: 7, textAlign: "center" }, nightWaitingText: { color: "#9eb0cc", fontSize: 9, marginTop: 5 }, nightStatsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 }, nightStat: { width: "48%", flexGrow: 1, minHeight: 66, backgroundColor: "#101a2b", borderRadius: 14, padding: 11, borderWidth: 1, borderColor: "#263750" }, nightStatDot: { width: 7, height: 7, borderRadius: 4, position: "absolute", top: 11, right: 11 }, nightStatValue: { color: "#f1f6ff", fontSize: 16, fontWeight: "900" }, nightStatLabel: { color: "#8fa1bd", fontSize: 9, marginTop: 4 }, nightMeta: { flexDirection: "row", justifyContent: "space-between", gap: 10 }, nightMetaText: { color: "#9eb0cc", fontSize: 9, fontWeight: "700" }, nightError: { color: "#ffb4a8", fontSize: 10, lineHeight: 15 }, nightButton: { minHeight: 50, borderRadius: 15, backgroundColor: "#087f6a", alignItems: "center", justifyContent: "center", paddingHorizontal: 14 }, nightStopButton: { backgroundColor: "#a33d3d" }, nightButtonText: { color: "#fff", fontSize: 12, fontWeight: "900", letterSpacing: 0.6 },
-  monitoringSectionHeader: { minHeight: 72, borderRadius: 19, padding: 14, flexDirection: "row", alignItems: "center", gap: 12, borderWidth: 1 }, monitoringSectionDay: { backgroundColor: "#e6f7f3", borderColor: "#b4e3d9" }, monitoringSectionNight: { backgroundColor: "#e9eef8", borderColor: "#c8d5ec" }, monitoringSectionHeaderDark: { backgroundColor: "#172621", borderColor: "#355149" }, monitoringSectionIcon: { width: 43, height: 43, borderRadius: 22, alignItems: "center", justifyContent: "center" }, monitoringSectionIconDay: { backgroundColor: "#bdebe1" }, monitoringSectionIconNight: { backgroundColor: "#243b60" }, monitoringSectionIconText: { color: "#087f6a", fontSize: 22, fontWeight: "900" }, monitoringSectionTitle: { color: "#153d35", fontSize: 18, fontWeight: "900" }, monitoringSectionSubtitle: { color: "#658079", fontSize: 10, lineHeight: 15, marginTop: 2 }, doctorNightSection: { gap: 14, marginTop: 8, paddingTop: 16, borderTopWidth: 2, borderTopColor: "#d8e1ef" }, nightHistoryCard: { backgroundColor: "#fff", borderRadius: 21, paddingTop: 17, paddingBottom: 16, overflow: "hidden" }, nightPeriodButton: { borderColor: "#ccd7eb" }, nightPeriodButtonSelected: { backgroundColor: "#315f9a", borderColor: "#315f9a" }, nightHistoryEmpty: { color: "#78908a", fontSize: 11, textAlign: "center", paddingHorizontal: 18, paddingVertical: 28 }, nightHistoryItem: { marginHorizontal: 14, marginTop: 10, padding: 14, borderRadius: 15, backgroundColor: "#f3f6fb", borderWidth: 1, borderColor: "#dce4f1" }, nightHistoryItemTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }, nightHistoryDate: { color: "#17324d", fontSize: 13, fontWeight: "900" }, nightHistoryStatus: { borderRadius: 10, backgroundColor: "#e4e9f1", paddingHorizontal: 8, paddingVertical: 5 }, nightHistoryStatusActive: { backgroundColor: "#dff5ef" }, nightHistoryStatusText: { color: "#607084", fontSize: 8, fontWeight: "900", textTransform: "uppercase" }, nightHistoryStatusTextActive: { color: "#087f6a" }, nightHistoryDominant: { flexDirection: "row", alignItems: "center", gap: 7, marginTop: 12 }, nightHistoryDot: { width: 9, height: 9, borderRadius: 5 }, nightHistoryDominantText: { color: "#425b70", fontSize: 10, fontWeight: "800" }, nightHistoryChanges: { color: "#718294", fontSize: 9, marginTop: 6 },
+  monitoringSectionHeader: { minHeight: 72, borderRadius: 19, padding: 14, flexDirection: "row", alignItems: "center", gap: 12, borderWidth: 1 }, monitoringSectionDay: { backgroundColor: "#e6f7f3", borderColor: "#b4e3d9" }, monitoringSectionNight: { backgroundColor: "#e9eef8", borderColor: "#c8d5ec" }, monitoringSectionHeaderDark: { backgroundColor: "#172621", borderColor: "#355149" }, monitoringSectionIcon: { width: 43, height: 43, borderRadius: 22, alignItems: "center", justifyContent: "center" }, monitoringSectionIconDay: { backgroundColor: "#bdebe1" }, monitoringSectionIconNight: { backgroundColor: "#243b60" }, monitoringSectionIconText: { color: "#087f6a", fontSize: 22, fontWeight: "900" }, monitoringSectionTitle: { color: "#153d35", fontSize: 18, fontWeight: "900" }, monitoringSectionSubtitle: { color: "#658079", fontSize: 10, lineHeight: 15, marginTop: 2 }, doctorNightSection: { gap: 14, marginTop: 8, paddingTop: 16, borderTopWidth: 2, borderTopColor: "#d8e1ef" }, nightHistoryCard: { backgroundColor: "#fff", borderRadius: 21, paddingTop: 17, paddingBottom: 16, overflow: "hidden" }, nightPeriodButton: { borderColor: "#ccd7eb" }, nightPeriodButtonSelected: { backgroundColor: "#315f9a", borderColor: "#315f9a" }, nightHistoryEmpty: { color: "#78908a", fontSize: 11, textAlign: "center", paddingHorizontal: 18, paddingVertical: 20 }, nightChartLegend: { flexDirection: "row", flexWrap: "wrap", gap: 10, paddingHorizontal: 17, marginTop: 14 }, nightHistoryChart: { marginLeft: -13, marginTop: 5 }, nightChartCaption: { color: "#718294", fontSize: 9, textAlign: "center", paddingHorizontal: 17, marginTop: -5 },
   associationDropdown: { backgroundColor: "#fff", borderRadius: 21, padding: 17, borderWidth: 1, borderColor: "#cfe4df", shadowColor: "#0a4c40", shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 3 }, associateButton: { minHeight: 47, borderRadius: 14, backgroundColor: "#087f6a", alignItems: "center", justifyContent: "center", marginTop: 13 },
   addPatientButton: { minHeight: 52, borderRadius: 16, borderWidth: 1.5, borderColor: "#087f6a", backgroundColor: "#fff", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, marginTop: 3 }, addPatientButtonOpen: { backgroundColor: "#e2f5f1", borderColor: "#5bb8a8" }, addPatientPlus: { color: "#087f6a", fontSize: 27, lineHeight: 28, fontWeight: "500" }, addPatientPlusOpen: { fontSize: 25 }, addPatientText: { color: "#087f6a", fontSize: 14, fontWeight: "900" }, addPatientTextOpen: { color: "#356c62" },
   directoryHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 5 }, directoryTitle: { color: "#153d35", fontSize: 19, fontWeight: "900" }, countBadge: { minWidth: 25, height: 25, paddingHorizontal: 7, borderRadius: 13, backgroundColor: "#cceee7", alignItems: "center", justifyContent: "center" }, countText: { color: "#087f6a", fontSize: 11, fontWeight: "900" },
@@ -1068,7 +1079,7 @@ const styles = StyleSheet.create({
   profileCard: { backgroundColor: "#fff", borderRadius: 21, paddingHorizontal: 17 }, profileInfo: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: "#e6efed" }, profileInfoLast: { borderBottomWidth: 0 }, profileInfoLabel: { color: "#78908a", fontSize: 9, fontWeight: "900", letterSpacing: 0.8 }, profileInfoValue: { color: "#153d35", fontSize: 15, fontWeight: "700", marginTop: 4 },
   profileMenu: { backgroundColor: "#fff", borderRadius: 21, paddingHorizontal: 15 }, menuButton: { minHeight: 72, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: 1, borderBottomColor: "#e6efed" }, menuButtonLast: { borderBottomWidth: 0 }, menuButtonPressed: { opacity: 0.65 }, menuIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: "#dff5f0", alignItems: "center", justifyContent: "center" }, menuIconDanger: { backgroundColor: "#fee9e7" }, menuIconText: { color: "#087f6a", fontSize: 17, fontWeight: "900" }, menuDangerText: { color: "#b42318" }, menuCopy: { flex: 1 }, menuTitle: { color: "#153d35", fontSize: 14, fontWeight: "900" }, menuSubtitle: { color: "#78908a", fontSize: 10, marginTop: 3 }, menuChevron: { color: "#6f9189", fontSize: 26 },
   formCard: { backgroundColor: "#fff", borderRadius: 23, padding: 19 }, passwordHint: { color: "#78908a", fontSize: 10, lineHeight: 15, marginTop: 11 }, settingsCard: { backgroundColor: "#fff", borderRadius: 21, padding: 17, flexDirection: "row", alignItems: "center", gap: 12 }, settingIcon: { width: 45, height: 45, borderRadius: 23, backgroundColor: "#dff5f0", alignItems: "center", justifyContent: "center" }, settingIconText: { color: "#087f6a", fontSize: 22 }, settingCopy: { flex: 1 }, settingTitle: { color: "#153d35", fontSize: 15, fontWeight: "900" }, settingText: { color: "#78908a", fontSize: 10, lineHeight: 15, marginTop: 3 }, soonBadge: { backgroundColor: "#edf4f2", borderRadius: 10, paddingHorizontal: 7, paddingVertical: 5 }, soonText: { color: "#608078", fontSize: 7, fontWeight: "900", letterSpacing: 0.4 }, settingsNote: { color: "#78908a", fontSize: 11, lineHeight: 17, textAlign: "center", paddingHorizontal: 18 },
-  historyCard: { backgroundColor: "#fff", borderRadius: 21, paddingTop: 17, overflow: "hidden" }, historyHeading: { minHeight: 38, paddingHorizontal: 17, flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }, periodRow: { flexDirection: "row", gap: 6, paddingHorizontal: 14, marginTop: 14 }, periodButton: { flex: 1, minHeight: 34, borderRadius: 11, borderWidth: 1, borderColor: "#d6e5e1", alignItems: "center", justifyContent: "center", backgroundColor: "#fbfefd" }, periodButtonSelected: { backgroundColor: "#087f6a", borderColor: "#087f6a" }, periodText: { color: "#5d7771", fontSize: 9, fontWeight: "800" }, periodTextSelected: { color: "#fff" }, historyLegend: { flexDirection: "row", justifyContent: "flex-end", gap: 13, paddingHorizontal: 17, marginTop: 12 }, legendItem: { flexDirection: "row", alignItems: "center", gap: 5 }, historyLegendDot: { width: 8, height: 8, borderRadius: 4 }, correctDot: { backgroundColor: "#25a995" }, incorrectDot: { backgroundColor: "#d92d20" }, historyChart: { marginLeft: -13, marginTop: 2 }, noHistoryText: { color: "#78908a", fontSize: 10, textAlign: "center", paddingHorizontal: 16, paddingBottom: 15, marginTop: -7 },
+  historyCard: { backgroundColor: "#fff", borderRadius: 21, paddingTop: 17, overflow: "hidden" }, historyHeading: { minHeight: 38, paddingHorizontal: 17, flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }, periodRow: { flexDirection: "row", gap: 6, paddingHorizontal: 14, marginTop: 14 }, periodButton: { flex: 1, minHeight: 34, borderRadius: 11, borderWidth: 1, borderColor: "#d6e5e1", alignItems: "center", justifyContent: "center", backgroundColor: "#fbfefd" }, periodButtonSelected: { backgroundColor: "#087f6a", borderColor: "#087f6a" }, periodText: { color: "#5d7771", fontSize: 9, fontWeight: "800" }, periodTextSelected: { color: "#fff" }, historyLegend: { flexDirection: "row", justifyContent: "flex-end", gap: 13, paddingHorizontal: 17, marginTop: 12 }, legendItem: { flexDirection: "row", alignItems: "center", gap: 5 }, historyLegendDot: { width: 8, height: 8, borderRadius: 4 }, correctDot: { backgroundColor: "#25a995" }, incorrectDot: { backgroundColor: "#d92d20" }, historyChart: { marginLeft: -13, marginTop: 2 }, axisChartBlock: { borderTopWidth: 1, borderTopColor: "#e4eeeb", marginTop: 13, paddingTop: 13 }, axisChartTitleRow: { flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 17 }, axisChartMarker: { width: 9, height: 9, borderRadius: 5 }, axisChartTitle: { color: "#29433d", fontSize: 12, fontWeight: "900" }, noHistoryText: { color: "#78908a", fontSize: 10, textAlign: "center", paddingHorizontal: 16, paddingBottom: 15, marginTop: -7 },
   statisticsCard: { backgroundColor: "#fff", borderRadius: 21, padding: 17 }, statisticsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 9, marginTop: 14 }, statisticBox: { width: "48%", flexGrow: 1, minHeight: 82, borderRadius: 15, backgroundColor: "#f3f8f7", padding: 13, justifyContent: "center" }, statisticValue: { fontSize: 22, fontWeight: "900" }, statisticLabel: { color: "#6b817c", fontSize: 10, fontWeight: "700", marginTop: 4 },
   screenDark: { backgroundColor: "#0d1714" }, headerDark: { backgroundColor: "#13211d", borderBottomColor: "#29433d" }, surfaceDark: { backgroundColor: "#162521", borderColor: "#29433d" }, surfaceDarkAlt: { backgroundColor: "#20332e", borderColor: "#355149" }, textDark: { color: "#e7f4f0" }, mutedDark: { color: "#9eb9b1" }, borderDark: { borderBottomColor: "#29433d" }, inputDark: { backgroundColor: "#20332e", borderColor: "#355149", color: "#e7f4f0" },
 });
