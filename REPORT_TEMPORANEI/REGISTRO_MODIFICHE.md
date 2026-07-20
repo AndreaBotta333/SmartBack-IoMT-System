@@ -497,3 +497,21 @@ Introdurre una modalità notturna attivabile dal Paziente, mostrare in tempo rea
 
 - Controllo TypeScript completato senza errori nel container Expo.
 - Bundle Android Expo generato correttamente con i nuovi grafici.
+
+## 20 luglio 2026 — Istogramma notturno e ricerca sessioni
+
+### Modifiche
+
+- Sostituito il grafico lineare dello storico notturno con un istogramma a quattro colonne.
+- L'istogramma mostra esclusivamente le percentuali di tempo in posizione supina, prona, in decubito destro e in decubito sinistro.
+- Le percentuali aggregate considerano tutte le sessioni comprese nella finestra temporale selezionata.
+- Aggiunto un menu a tendina contenente tutte le sessioni notturne disponibili del paziente.
+- Aggiunto un campo di ricerca nel menu per filtrare rapidamente le sessioni utilizzando data numerica, data estesa oppure orario.
+- Selezionando una singola sessione, l'istogramma viene ricalcolato esclusivamente sui dati di quella notte.
+- Aggiunta l'opzione per tornare alla visualizzazione aggregata di tutte le sessioni del periodo.
+- Per ogni voce del menu vengono mostrati data, ora, durata e stato della sessione.
+
+### Verifiche
+
+- Controllo TypeScript completato senza errori nel container Expo.
+- Bundle Android Expo generato correttamente con istogramma, menu a tendina e ricerca per data.
