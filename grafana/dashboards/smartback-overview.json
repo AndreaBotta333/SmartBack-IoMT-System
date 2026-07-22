@@ -1,5 +1,7 @@
 {
-  "annotations": {"list": []},
+  "annotations": {
+    "list": []
+  },
   "editable": false,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -7,7 +9,7 @@
   "links": [
     {
       "asDropdown": false,
-      "icon": "arrow-left",
+      "icon": "home-alt",
       "includeVars": false,
       "keepTime": false,
       "tags": [],
@@ -19,13 +21,25 @@
     },
     {
       "asDropdown": false,
-      "icon": "external link-alt",
+      "icon": "sun",
       "includeVars": true,
       "keepTime": false,
       "tags": [],
       "targetBlank": false,
-      "title": "🔵  APRI STORICO",
-      "tooltip": "Consulta lo storico persistente del paziente monitorato",
+      "title": "DIURNO",
+      "tooltip": "Schermata attuale: monitoraggio diurno",
+      "type": "link",
+      "url": "/grafana/d/smartback-overview/smartback-monitoraggio-paziente?refresh=1s"
+    },
+    {
+      "asDropdown": false,
+      "icon": "history",
+      "includeVars": true,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": false,
+      "title": "STORICO D",
+      "tooltip": "Apri lo storico diurno",
       "type": "link",
       "url": "/grafana/d/smartback-history/smartback-storico-paziente"
     },
@@ -36,7 +50,7 @@
       "keepTime": false,
       "tags": [],
       "targetBlank": false,
-      "title": "MONITORAGGIO NOTTURNO",
+      "title": "NOTTURNO",
       "tooltip": "Apri il monitoraggio notturno",
       "type": "link",
       "url": "/grafana/d/smartback-night/smartback-monitoraggio-notturno?refresh=1s"
@@ -48,7 +62,7 @@
       "keepTime": false,
       "tags": [],
       "targetBlank": false,
-      "title": "STORICO NOTTURNO",
+      "title": "STORICO N",
       "tooltip": "Apri lo storico notturno",
       "type": "link",
       "url": "/grafana/d/smartback-night-history/smartback-storico-notturno"
@@ -57,204 +71,1184 @@
   "liveNow": false,
   "panels": [
     {
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "gridPos": {
+        "h": 2,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
       "id": 20,
-      "options": {"code": {"language": "plaintext", "showLineNumbers": false, "showMiniMap": false}, "content": "<h3 style=\"margin:0\">Stato smart shirt</h3>", "mode": "html"},
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "<div style=\"height:100%;display:flex;align-items:center;padding:0 8px;font-size:21px;font-weight:700;line-height:1.2\">Stato smart t-shirt</div>",
+        "mode": "html"
+      },
       "title": "",
       "transparent": true,
       "type": "text"
     },
     {
-      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "smartback-influx"
+      },
       "description": "Angolo assoluto corrente del busto sul piano avanti/indietro.",
-      "fieldConfig": {"defaults": {"color": {"fixedColor": "blue", "mode": "fixed"}, "decimals": 1, "noValue": "OFF", "unit": "degree"}, "overrides": []},
-      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 6},
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "blue",
+            "mode": "fixed"
+          },
+          "decimals": 1,
+          "noValue": "OFF",
+          "unit": "degree"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 8
+      },
       "id": 1,
-      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: -10s) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"pitch_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last()", "refId": "A"}],
+      "targets": [
+        {
+          "query": "import \"array\"\nzero = array.from(rows: [{_time: 1970-01-01T00:00:00Z, _field: \"pitch_deg\", _value: 0.0}])\nlive = from(bucket: \"posture\") |> range(start: -10s) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"pitch_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> keep(columns: [\"_time\", \"_field\", \"_value\"])\nunion(tables: [zero, live]) |> group(columns: []) |> sort(columns: [\"_time\"]) |> last()",
+          "refId": "A"
+        }
+      ],
       "title": "Pitch",
       "type": "stat"
     },
     {
-      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "smartback-influx"
+      },
       "description": "Angolo assoluto corrente del busto sul piano laterale.",
-      "fieldConfig": {"defaults": {"color": {"fixedColor": "purple", "mode": "fixed"}, "decimals": 1, "noValue": "OFF", "unit": "degree"}, "overrides": []},
-      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 6},
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "purple",
+            "mode": "fixed"
+          },
+          "decimals": 1,
+          "noValue": "OFF",
+          "unit": "degree"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 12
+      },
       "id": 2,
-      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: -10s) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"roll_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last()", "refId": "A"}],
+      "targets": [
+        {
+          "query": "import \"array\"\nzero = array.from(rows: [{_time: 1970-01-01T00:00:00Z, _field: \"roll_deg\", _value: 0.0}])\nlive = from(bucket: \"posture\") |> range(start: -10s) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"roll_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> keep(columns: [\"_time\", \"_field\", \"_value\"])\nunion(tables: [zero, live]) |> group(columns: []) |> sort(columns: [\"_time\"]) |> last()",
+          "refId": "A"
+        }
+      ],
       "title": "Roll",
       "type": "stat"
     },
     {
-      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
-      "description": "Differenza corrente tra il pitch assoluto e il riferimento di calibrazione.",
-      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "decimals": 1, "noValue": "OFF", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 10}, {"color": "red", "value": 20}]}, "unit": "degree"}, "overrides": []},
-      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 6},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "smartback-influx"
+      },
+      "description": "Deviazione corrente del pitch rispetto alla calibrazione. Verde: |deviazione| < 10 gradi; giallo: 10-20 gradi; rosso: almeno 20 gradi. Soglie ergonomiche operative, non diagnostiche.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "noValue": "OFF",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": -20
+              },
+              {
+                "color": "green",
+                "value": -10
+              },
+              {
+                "color": "yellow",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 20
+              }
+            ]
+          },
+          "unit": "degree"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 8
+      },
       "id": 17,
-      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: -10s) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"pitch_deviation_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last()", "refId": "A"}],
+      "targets": [
+        {
+          "query": "import \"array\"\nzero = array.from(rows: [{_time: 1970-01-01T00:00:00Z, _field: \"pitch_deviation_deg\", _value: 0.0}])\nlive = from(bucket: \"posture\") |> range(start: -10s) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"pitch_deviation_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> keep(columns: [\"_time\", \"_field\", \"_value\"])\nunion(tables: [zero, live]) |> group(columns: []) |> sort(columns: [\"_time\"]) |> last()",
+          "refId": "A"
+        }
+      ],
       "title": "Dev. Pitch",
       "type": "stat"
     },
     {
-      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
-      "description": "Differenza corrente tra il roll assoluto e il riferimento di calibrazione.",
-      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "decimals": 1, "noValue": "OFF", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 10}, {"color": "red", "value": 20}]}, "unit": "degree"}, "overrides": []},
-      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 6},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "smartback-influx"
+      },
+      "description": "Deviazione corrente del roll rispetto alla calibrazione. Verde: |deviazione| < 10 gradi; giallo: 10-20 gradi; rosso: almeno 20 gradi. Soglie ergonomiche operative, non diagnostiche.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "noValue": "OFF",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": -20
+              },
+              {
+                "color": "green",
+                "value": -10
+              },
+              {
+                "color": "yellow",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 20
+              }
+            ]
+          },
+          "unit": "degree"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 12
+      },
       "id": 18,
-      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: -10s) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"roll_deviation_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last()", "refId": "A"}],
+      "targets": [
+        {
+          "query": "import \"array\"\nzero = array.from(rows: [{_time: 1970-01-01T00:00:00Z, _field: \"roll_deviation_deg\", _value: 0.0}])\nlive = from(bucket: \"posture\") |> range(start: -10s) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"roll_deviation_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> keep(columns: [\"_time\", \"_field\", \"_value\"])\nunion(tables: [zero, live]) |> group(columns: []) |> sort(columns: [\"_time\"]) |> last()",
+          "refId": "A"
+        }
+      ],
       "title": "Dev. Roll",
       "type": "stat"
     },
     {
-      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "smartback-influx"
+      },
       "description": "Tempo consecutivo trascorso oltre la soglia di inclinazione avanti/indietro.",
-      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "decimals": 0, "noValue": "Nessun dato", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 5}, {"color": "red", "value": 15}]}, "unit": "s"}, "overrides": []},
-      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 6},
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "noValue": "Nessun dato",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 15
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 8
+      },
       "id": 3,
-      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: -10s) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"pitch_deviation_duration_seconds\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last()", "refId": "A"}],
-      "title": "Durata P",
+      "targets": [
+        {
+          "query": "import \"array\"\nzero = array.from(rows: [{_time: 1970-01-01T00:00:00Z, _field: \"pitch_deviation_duration_seconds\", _value: 0.0}])\nlive = from(bucket: \"posture\") |> range(start: -10s) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"pitch_deviation_duration_seconds\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> keep(columns: [\"_time\", \"_field\", \"_value\"])\nunion(tables: [zero, live]) |> group(columns: []) |> sort(columns: [\"_time\"]) |> last()",
+          "refId": "A"
+        }
+      ],
+      "title": "Dev. Pitch",
       "type": "stat"
     },
     {
-      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "smartback-influx"
+      },
       "description": "Tempo consecutivo trascorso oltre la soglia di inclinazione laterale.",
-      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "decimals": 0, "noValue": "Nessun dato", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 5}, {"color": "red", "value": 15}]}, "unit": "s"}, "overrides": []},
-      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 6},
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "noValue": "Nessun dato",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 15
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 12
+      },
       "id": 12,
-      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: -10s) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"roll_deviation_duration_seconds\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last()", "refId": "A"}],
-      "title": "Durata R",
+      "targets": [
+        {
+          "query": "import \"array\"\nzero = array.from(rows: [{_time: 1970-01-01T00:00:00Z, _field: \"roll_deviation_duration_seconds\", _value: 0.0}])\nlive = from(bucket: \"posture\") |> range(start: -10s) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"roll_deviation_duration_seconds\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> keep(columns: [\"_time\", \"_field\", \"_value\"])\nunion(tables: [zero, live]) |> group(columns: []) |> sort(columns: [\"_time\"]) |> last()",
+          "refId": "A"
+        }
+      ],
+      "title": "Dev. Roll",
       "type": "stat"
     },
     {
-      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "smartback-influx"
+      },
       "description": "Stato del flusso live. La maglia e considerata disconnessa dopo 10 secondi senza dati posturali.",
-      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [{"options": {"0": {"color": "red", "index": 0, "text": "OFF"}, "1": {"color": "green", "index": 1, "text": "ON"}}, "type": "value"}], "noValue": "OFF", "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
-      "gridPos": {"h": 4, "w": 12, "x": 12, "y": 1},
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "red",
+                  "index": 0,
+                  "text": "OFF"
+                },
+                "1": {
+                  "color": "green",
+                  "index": 1,
+                  "text": "ON"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "noValue": "OFF",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 2
+      },
       "id": 10,
-      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "import \"array\"\nsamples = from(bucket: \"posture\") |> range(start: -10s) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"pitch_deviation_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> count() |> map(fn: (r) => ({_time: now(), _field: \"connessione\", _value: 1}))\nbaseline = array.from(rows: [{_time: now(), _field: \"connessione\", _value: 0}])\nunion(tables: [baseline, samples]) |> group(columns: []) |> max(column: \"_value\")", "refId": "A"}],
+      "targets": [
+        {
+          "query": "import \"array\"\nday = from(bucket: \"posture\") |> range(start: -10s) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"pitch_deviation_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> count() |> map(fn: (r) => ({_time: now(), _field: \"connessione\", _value: 1}))\nnight = from(bucket: \"posture\") |> range(start: -10s) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> count() |> map(fn: (r) => ({_time: now(), _field: \"connessione\", _value: 1}))\nbaseline = array.from(rows: [{_time: now(), _field: \"connessione\", _value: 0}])\nunion(tables: [baseline, day, night]) |> group(columns: []) |> max(column: \"_value\")",
+          "refId": "A"
+        }
+      ],
       "title": "Maglia",
       "type": "stat"
     },
     {
-      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "smartback-influx"
+      },
       "description": "Livello di carica più recente trasmesso dalla smart shirt.",
-      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "decimals": 0, "mappings": [{"options": {"-1": {"color": "red", "index": 0, "text": "Disconnessa"}}, "type": "value"}], "max": 100, "min": -1, "noValue": "Disconnessa", "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "orange", "value": 20}, {"color": "green", "value": 40}]}, "unit": "percent"}, "overrides": []},
-      "gridPos": {"h": 4, "w": 12, "x": 0, "y": 1},
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [
+            {
+              "options": {
+                "-1": {
+                  "color": "red",
+                  "index": 0,
+                  "text": "Disconnessa"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "max": 100,
+          "min": -1,
+          "noValue": "Disconnessa",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 20
+              },
+              {
+                "color": "green",
+                "value": 40
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 2
+      },
       "id": 4,
-      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "live = from(bucket: \"posture\") |> range(start: -10s) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"pitch_deviation_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> findRecord(fn: (key) => true, idx: 0)\nfrom(bucket: \"posture\") |> range(start: -30d) |> filter(fn: (r) => r._measurement == \"device_status\" and r._field == \"state_of_charge\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> map(fn: (r) => ({r with _value: if exists live._value then float(v: r._value) else -1.0}))", "refId": "A"}],
+      "targets": [
+        {
+          "query": "import \"array\"\nday = from(bucket: \"posture\") |> range(start: -10s) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"pitch_deviation_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> count() |> map(fn: (r) => ({_time: now(), _value: 1}))\nnight = from(bucket: \"posture\") |> range(start: -10s) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> count() |> map(fn: (r) => ({_time: now(), _value: 1}))\nbaseline = array.from(rows: [{_time: now(), _value: 0}])\nconnected = union(tables: [baseline, day, night]) |> group(columns: []) |> max(column: \"_value\") |> findRecord(fn: (key) => true, idx: 0)\nfrom(bucket: \"posture\") |> range(start: -30d) |> filter(fn: (r) => r._measurement == \"device_status\" and r._field == \"state_of_charge\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> map(fn: (r) => ({r with _value: if connected._value == 1 then float(v: r._value) else -1.0}))",
+          "refId": "A"
+        }
+      ],
       "title": "Batteria",
       "type": "stat"
     },
     {
-      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "smartback-influx"
+      },
+      "description": "Indica se il monitoraggio posturale diurno è attivo. Durante una sessione notturna resta OFF.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "red",
+                  "index": 0,
+                  "text": "OFF"
+                },
+                "1": {
+                  "color": "green",
+                  "index": 1,
+                  "text": "ON"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "noValue": "OFF",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 2
+      },
+      "id": 22,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.0.2",
+      "targets": [
+        {
+          "query": "import \"array\"\nday = from(bucket: \"posture\") |> range(start: -10s) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"pitch_deviation_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> count() |> map(fn: (r) => ({_time: now(), _field: \"monitoraggio\", _value: 1}))\nbaseline = array.from(rows: [{_time: now(), _field: \"monitoraggio\", _value: 0}])\nunion(tables: [baseline, day]) |> group(columns: []) |> max(column: \"_value\")",
+          "refId": "A"
+        }
+      ],
+      "title": "Monitoraggio",
+      "type": "stat"
+    },
+    {
+      "gridPos": {
+        "h": 2,
+        "w": 24,
+        "x": 0,
+        "y": 6
+      },
       "id": 21,
-      "options": {"code": {"language": "plaintext", "showLineNumbers": false, "showMiniMap": false}, "content": "### Monitoraggio posturale", "mode": "markdown"},
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "<div style=\"height:100%;display:flex;align-items:center;padding:0 8px;font-size:21px;font-weight:700;line-height:1.2\">Monitoraggio posturale</div>",
+        "mode": "html"
+      },
       "title": "",
       "transparent": true,
       "type": "text"
     },
     {
-      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "smartback-influx"
+      },
       "description": "Valore pitch visualizzato e acquisito nel momento in cui è stato premuto CALIBRA.",
-      "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "#1E40AF"}, "decimals": 1, "noValue": "Non calibrata", "unit": "degree"}, "overrides": []},
-      "gridPos": {"h": 4, "w": 8, "x": 0, "y": 10},
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "#1E40AF",
+            "mode": "fixed"
+          },
+          "decimals": 1,
+          "noValue": "Non calibrata",
+          "unit": "degree"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 8
+      },
       "id": 13,
-      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: -30d) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"reference_pitch_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last()", "refId": "A"}],
-      "title": "Calibrazione · Pitch",
+      "targets": [
+        {
+          "query": "from(bucket: \"posture\") |> range(start: -30d) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"reference_pitch_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last()",
+          "refId": "A"
+        }
+      ],
+      "title": "Cal. Pitch",
       "type": "stat"
     },
     {
-      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "smartback-influx"
+      },
       "description": "Valore roll visualizzato e acquisito nel momento in cui è stato premuto CALIBRA.",
-      "fieldConfig": {"defaults": {"color": {"mode": "fixed", "fixedColor": "#F472B6"}, "decimals": 1, "noValue": "Non calibrata", "unit": "degree"}, "overrides": []},
-      "gridPos": {"h": 4, "w": 8, "x": 8, "y": 10},
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "#F472B6",
+            "mode": "fixed"
+          },
+          "decimals": 1,
+          "noValue": "Non calibrata",
+          "unit": "degree"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 12
+      },
       "id": 16,
-      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: -30d) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"reference_roll_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last()", "refId": "A"}],
-      "title": "Calibrazione · Roll",
+      "targets": [
+        {
+          "query": "from(bucket: \"posture\") |> range(start: -30d) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"reference_roll_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last()",
+          "refId": "A"
+        }
+      ],
+      "title": "Cal. Roll",
       "type": "stat"
     },
     {
-      "description": "Apre la procedura protetta per sostituire lo zero posturale.",
-      "gridPos": {"h": 4, "w": 8, "x": 16, "y": 10},
+      "description": "Calibrazione acquisita dalla postura corrente oppure inserita manualmente.",
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
       "id": 14,
-      "options": {"code": {"language": "plaintext", "showLineNumbers": false, "showMiniMap": false}, "content": "<form id=\"smartback-calibration-snapshot\" action=\"http://localhost:3000/api/v1/grafana/patients/${patient_id}/calibration-snapshot\" method=\"post\" target=\"smartback-calibration-result\" hidden></form><div style=\"height:100%;display:flex;align-items:center;justify-content:center\"><button type=\"button\" popovertarget=\"smartback-calibration-modal\" onclick=\"document.getElementById('smartback-calibration-snapshot').requestSubmit()\" style=\"display:flex;align-items:center;justify-content:center;width:82%;height:54%;border:0;border-radius:8px;background:#3274d9;color:#fff;cursor:pointer;font-size:22px;font-weight:700;letter-spacing:.4px\">CALIBRA</button></div><div id=\"smartback-calibration-modal\" popover=\"manual\" style=\"width:min(560px,calc(100vw - 48px));padding:0;border:1px solid #475467;border-radius:14px;background:#181b1f;color:#f2f4f7;box-shadow:0 24px 70px rgba(0,0,0,.55)\"><div style=\"padding:26px\"><div style=\"display:flex;justify-content:space-between;align-items:center;gap:18px\"><h2 style=\"margin:0;font-size:24px\">Conferma calibrazione</h2><button type=\"button\" popovertarget=\"smartback-calibration-modal\" popovertargetaction=\"hide\" aria-label=\"Chiudi\" style=\"border:0;background:transparent;color:#98a2b3;font-size:26px;cursor:pointer\">×</button></div><p style=\"margin:18px 0 8px\"><strong>Paziente:</strong> ${patient_id}</p><div style=\"margin:18px 0;padding:16px;border-left:4px solid #f79009;border-radius:6px;background:#332615\"><strong>Attenzione</strong><p style=\"margin:8px 0 0;line-height:1.45\">Sono stati acquisiti i valori di pitch e roll presenti al momento del clic su CALIBRA. Confermando, questi valori sostituiranno lo zero posturale corrente.</p></div><form action=\"http://localhost:3000/api/v1/grafana/patients/${patient_id}/calibration-form\" method=\"post\" target=\"smartback-calibration-result\" onsubmit=\"setTimeout(() => document.getElementById('smartback-calibration-modal').hidePopover(), 250)\"><div style=\"display:flex;justify-content:flex-end;gap:12px;margin-top:22px\"><button type=\"button\" popovertarget=\"smartback-calibration-modal\" popovertargetaction=\"hide\" style=\"padding:11px 18px;border:1px solid #667085;border-radius:7px;background:transparent;color:#fff;cursor:pointer;font-weight:650\">ANNULLA</button><button type=\"submit\" style=\"padding:11px 20px;border:0;border-radius:7px;background:#3274d9;color:#fff;cursor:pointer;font-weight:700\">CONFERMA</button></div></form><iframe name=\"smartback-calibration-result\" title=\"Esito calibrazione\" hidden></iframe></div></div>", "mode": "html"},
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "<iframe src=\"/api/v1/grafana/patients/${patient_id}/calibration-control\" title=\"Controlli calibrazione\" style=\"display:block;width:100%;height:100%;min-height:180px;border:0;background:#111217\"></iframe>",
+        "mode": "html"
+      },
       "pluginVersion": "12.0.2",
-      "title": "Calibrazione",
+      "title": "",
+      "transparent": true,
       "type": "text"
     },
     {
-      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "smartback-influx"
+      },
       "description": "Evoluzione dell'inclinazione avanti/indietro nel periodo selezionato.",
-      "fieldConfig": {"defaults": {"color": {"fixedColor": "blue", "mode": "fixed"}, "custom": {"axisBorderShow": false, "axisCenteredZero": true, "axisColorMode": "text", "axisLabel": "gradi", "axisPlacement": "auto", "axisSoftMin": -30, "axisSoftMax": 30, "barAlignment": 0, "drawStyle": "line", "fillOpacity": 6, "gradientMode": "opacity", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 3, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "decimals": 1, "unit": "degree"}, "overrides": [{"matcher": {"id": "byFrameRefID", "options": "B"}, "properties": [{"id": "color", "value": {"fixedColor": "#1E40AF", "mode": "fixed"}}, {"id": "custom.fillOpacity", "value": 0}, {"id": "custom.lineInterpolation", "value": "linear"}, {"id": "custom.lineStyle", "value": {"dash": [6, 7], "fill": "dash"}}, {"id": "custom.lineWidth", "value": 2}]}]},
-      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 14},
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "blue",
+            "mode": "fixed"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": true,
+            "axisColorMode": "text",
+            "axisLabel": "gradi",
+            "axisPlacement": "auto",
+            "axisSoftMax": 30,
+            "axisSoftMin": -30,
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 6,
+            "gradientMode": "opacity",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 3,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "decimals": 1,
+          "unit": "degree"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#1E40AF",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineInterpolation",
+                "value": "linear"
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    6,
+                    7
+                  ],
+                  "fill": "dash"
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 22
+      },
       "id": 5,
-      "options": {"legend": {"calcs": [], "displayMode": "hidden", "placement": "bottom", "showLegend": false}, "tooltip": {"hideZeros": false, "mode": "single", "sort": "none"}},
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "hidden",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"pitch_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> set(key: \"_field\", value: \"Pitch\")", "refId": "A"}, {"query": "import \"array\"\nreference = from(bucket: \"posture\") |> range(start: -30d) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"reference_pitch_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> findRecord(fn: (key) => true, idx: 0)\narray.from(rows: [{_time: v.timeRangeStart, _value: float(v: reference._value), _field: \"Calibrazione Pitch\"}, {_time: v.timeRangeStop, _value: float(v: reference._value), _field: \"Calibrazione Pitch\"}])", "refId": "B"}],
-      "timeFrom": "30s",
+      "targets": [
+        {
+          "query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"pitch_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> set(key: \"_field\", value: \"Pitch\") |> sort(columns: [\"_time\"])",
+          "refId": "A"
+        },
+        {
+          "query": "import \"array\"\ninactive = array.from(rows: [{_time: 1970-01-01T00:00:00Z, _value: 0.0, session_id: \"\"}])\nrecent = from(bucket: \"posture\") |> range(start: -10s) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"pitch_deviation_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> keep(columns: [\"_time\", \"_value\", \"session_id\"])\ncurrent = union(tables: [inactive, recent]) |> group(columns: []) |> sort(columns: [\"_time\"]) |> last() |> findRecord(fn: (key) => true, idx: 0)\nreference = from(bucket: \"posture\") |> range(start: -30d) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"reference_pitch_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> findRecord(fn: (key) => true, idx: 0)\narray.from(rows: [{_time: v.timeRangeStart, _value: float(v: reference._value), _field: \"Calibrazione Pitch\"}, {_time: v.timeRangeStop, _value: float(v: reference._value), _field: \"Calibrazione Pitch\"}]) |> filter(fn: (r) => current.session_id != \"\")",
+          "refId": "B"
+        }
+      ],
+      "timeFrom": "10s",
       "title": "Andamento inclinazione avanti/indietro",
       "type": "timeseries"
     },
     {
-      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "smartback-influx"
+      },
       "description": "Evoluzione dell'inclinazione laterale nel periodo selezionato.",
-      "fieldConfig": {"defaults": {"color": {"fixedColor": "purple", "mode": "fixed"}, "custom": {"axisBorderShow": false, "axisCenteredZero": true, "axisColorMode": "text", "axisLabel": "gradi", "axisPlacement": "auto", "axisSoftMin": -30, "axisSoftMax": 30, "barAlignment": 0, "drawStyle": "line", "fillOpacity": 6, "gradientMode": "opacity", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 3, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "decimals": 1, "unit": "degree"}, "overrides": [{"matcher": {"id": "byFrameRefID", "options": "B"}, "properties": [{"id": "color", "value": {"fixedColor": "#F472B6", "mode": "fixed"}}, {"id": "custom.fillOpacity", "value": 0}, {"id": "custom.lineInterpolation", "value": "linear"}, {"id": "custom.lineStyle", "value": {"dash": [6, 7], "fill": "dash"}}, {"id": "custom.lineWidth", "value": 2}]}]},
-      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 14},
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "purple",
+            "mode": "fixed"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": true,
+            "axisColorMode": "text",
+            "axisLabel": "gradi",
+            "axisPlacement": "auto",
+            "axisSoftMax": 30,
+            "axisSoftMin": -30,
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 6,
+            "gradientMode": "opacity",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 3,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "decimals": 1,
+          "unit": "degree"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#F472B6",
+                  "mode": "fixed"
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineInterpolation",
+                "value": "linear"
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    6,
+                    7
+                  ],
+                  "fill": "dash"
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 22
+      },
       "id": 6,
-      "options": {"legend": {"calcs": [], "displayMode": "hidden", "placement": "bottom", "showLegend": false}, "tooltip": {"hideZeros": false, "mode": "single", "sort": "none"}},
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "hidden",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"roll_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> set(key: \"_field\", value: \"Roll\")", "refId": "A"}, {"query": "import \"array\"\nreference = from(bucket: \"posture\") |> range(start: -30d) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"reference_roll_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> findRecord(fn: (key) => true, idx: 0)\narray.from(rows: [{_time: v.timeRangeStart, _value: float(v: reference._value), _field: \"Calibrazione Roll\"}, {_time: v.timeRangeStop, _value: float(v: reference._value), _field: \"Calibrazione Roll\"}])", "refId": "B"}],
-      "timeFrom": "30s",
+      "targets": [
+        {
+          "query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"roll_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> set(key: \"_field\", value: \"Roll\") |> sort(columns: [\"_time\"])",
+          "refId": "A"
+        },
+        {
+          "query": "import \"array\"\ninactive = array.from(rows: [{_time: 1970-01-01T00:00:00Z, _value: 0.0, session_id: \"\"}])\nrecent = from(bucket: \"posture\") |> range(start: -10s) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"pitch_deviation_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> keep(columns: [\"_time\", \"_value\", \"session_id\"])\ncurrent = union(tables: [inactive, recent]) |> group(columns: []) |> sort(columns: [\"_time\"]) |> last() |> findRecord(fn: (key) => true, idx: 0)\nreference = from(bucket: \"posture\") |> range(start: -30d) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"reference_roll_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> findRecord(fn: (key) => true, idx: 0)\narray.from(rows: [{_time: v.timeRangeStart, _value: float(v: reference._value), _field: \"Calibrazione Roll\"}, {_time: v.timeRangeStop, _value: float(v: reference._value), _field: \"Calibrazione Roll\"}]) |> filter(fn: (r) => current.session_id != \"\")",
+          "refId": "B"
+        }
+      ],
+      "timeFrom": "10s",
       "title": "Andamento inclinazione laterale",
       "type": "timeseries"
     },
     {
-      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "smartback-influx"
+      },
       "description": "Ultimi eventi posturali rilevati per il paziente selezionato.",
       "fieldConfig": {
-        "defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}, "filterable": true, "inspect": false}},
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          }
+        },
         "overrides": [
-          {"matcher": {"id": "byName", "options": "Messaggio"}, "properties": [{"id": "custom.width", "value": 360}]},
-          {"matcher": {"id": "byName", "options": "Stato"}, "properties": [{"id": "mappings", "value": [{"options": {"false": {"color": "green", "index": 0, "text": "Risolto"}, "true": {"color": "red", "index": 1, "text": "Attivo"}}, "type": "value"}]}, {"id": "custom.cellOptions", "value": {"mode": "basic", "type": "color-text"}}]}
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Messaggio"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 360
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Stato"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "false": {
+                        "color": "green",
+                        "index": 0,
+                        "text": "Risolto"
+                      },
+                      "true": {
+                        "color": "red",
+                        "index": 1,
+                        "text": "Attivo"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "basic",
+                  "type": "color-text"
+                }
+              }
+            ]
+          }
         ]
       },
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 23},
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 31
+      },
       "id": 9,
-      "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true},
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "import \"strings\"\nbase = from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"alerts\" and r.patient_id == \"${patient_id}\")\nactive = base |> filter(fn: (r) => r._field == \"active\") |> rename(columns: {_value: \"active\"}) |> keep(columns: [\"_time\", \"code\", \"severity\", \"active\"])\nmessages = base |> filter(fn: (r) => r._field == \"message\") |> rename(columns: {_value: \"message\"}) |> keep(columns: [\"_time\", \"code\", \"severity\", \"message\"])\njoin(tables: {active: active, messages: messages}, on: [\"_time\", \"code\", \"severity\"]) |> map(fn: (r) => ({r with alert_name: if r.code == \"POSTURE_MARKED_DEVIATION\" then \"Deviazione marcata\" else if r.code == \"POSTURE_PROLONGED_DEVIATION\" then \"Deviazione prolungata\" else if r.code == \"POSTURE_OK\" then \"Postura regolare\" else if r.code == \"DATA_STREAM_STALE\" then \"Flusso dati interrotto\" else if r.code == \"DATA_STREAM_RESTORED\" then \"Flusso dati ripristinato\" else if r.code == \"BATTERY_CRITICAL\" then \"Batteria critica\" else if r.code == \"BATTERY_LOW\" then \"Batteria bassa\" else if r.code == \"BATTERY_RECOVERED\" then \"Batteria ripristinata\" else if r.code == \"ACC_SEQUENCE_GAP\" then \"Pacchetti mancanti\" else if r.code == \"DATA_LOSS\" then \"Perdita dati maglia\" else \"Errore elaborazione\", message: if strings.strlen(v: r.message) > 55 then strings.substring(v: r.message, start: 0, end: 55) + \"…\" else r.message})) |> keep(columns: [\"_time\", \"alert_name\", \"active\", \"message\"]) |> group() |> sort(columns: [\"_time\"], desc: true) |> limit(n: 30)", "refId": "A"}],
+      "targets": [
+        {
+          "query": "import \"array\"\nimport \"strings\"\ninactive = array.from(rows: [{_time: 1970-01-01T00:00:00Z, _value: 0.0, session_id: \"\"}])\nrecent = from(bucket: \"posture\") |> range(start: -10s) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"pitch_deviation_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> keep(columns: [\"_time\", \"_value\", \"session_id\"])\ncurrent = union(tables: [inactive, recent]) |> group(columns: []) |> sort(columns: [\"_time\"]) |> last() |> findRecord(fn: (key) => true, idx: 0)\nbase = from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"alerts\" and r.patient_id == \"${patient_id}\") |> filter(fn: (r) => current.session_id != \"\")\nactive = base |> filter(fn: (r) => r._field == \"active\") |> rename(columns: {_value: \"active\"}) |> keep(columns: [\"_time\", \"code\", \"severity\", \"active\"])\nmessages = base |> filter(fn: (r) => r._field == \"message\") |> rename(columns: {_value: \"message\"}) |> keep(columns: [\"_time\", \"code\", \"severity\", \"message\"])\njoin(tables: {active: active, messages: messages}, on: [\"_time\", \"code\", \"severity\"]) |> map(fn: (r) => ({r with alert_name: if r.code == \"POSTURE_MARKED_DEVIATION\" then \"Forte inclinazione\" else if r.code == \"POSTURE_PROLONGED_DEVIATION\" then \"Inclinazione troppo lunga\" else if r.code == \"POSTURE_OK\" then \"Postura ristabilita\" else if r.code == \"DATA_STREAM_STALE\" then \"Nessun dato dalla maglia\" else if r.code == \"DATA_STREAM_RESTORED\" then \"Trasmissione ripresa\" else if r.code == \"BATTERY_CRITICAL\" then \"Batteria critica (≤10%)\" else if r.code == \"BATTERY_LOW\" then \"Batteria bassa (≤20%)\" else if r.code == \"BATTERY_RECOVERED\" then \"Batteria recuperata (>20%)\" else if r.code == \"ACC_SEQUENCE_GAP\" then \"Pacchetti saltati\" else if r.code == \"DATA_LOSS\" then \"Perdita dichiarata dalla maglia\" else \"Errore non classificato\", message: if r.code == \"POSTURE_MARKED_DEVIATION\" then \"Superata la soglia di inclinazione elevata\" else if r.code == \"POSTURE_PROLONGED_DEVIATION\" then \"Inclinazione mantenuta oltre il tempo consentito\" else if r.code == \"POSTURE_OK\" then \"Postura tornata entro i limiti\" else if r.code == \"DATA_STREAM_STALE\" then \"La maglia ha interrotto la trasmissione\" else if r.code == \"DATA_STREAM_RESTORED\" then \"La maglia ha ripreso a trasmettere\" else if r.code == \"BATTERY_CRITICAL\" then \"Carica residua pari o inferiore al 10%\" else if r.code == \"BATTERY_LOW\" then \"Carica residua tra 11% e 20%\" else if r.code == \"BATTERY_RECOVERED\" then \"Carica nuovamente superiore al 20%\" else if r.code == \"ACC_SEQUENCE_GAP\" then \"Rilevato un salto nella sequenza dei pacchetti\" else if r.code == \"DATA_LOSS\" then \"La maglia ha segnalato una perdita di dati\" else if strings.strlen(v: r.message) > 55 then strings.substring(v: r.message, start: 0, end: 55) + \"…\" else r.message})) |> keep(columns: [\"_time\", \"alert_name\", \"active\", \"message\"]) |> group() |> sort(columns: [\"_time\"], desc: true) |> limit(n: 30)",
+          "refId": "A"
+        }
+      ],
       "title": "Alert recenti",
-      "transformations": [{"id": "organize", "options": {"excludeByName": {"_measurement": true, "_start": true, "_stop": true, "device_id": true, "patient_id": true, "result": true, "severity": true, "table": true}, "indexByName": {"_time": 0, "alert_name": 1, "active": 2, "message": 3}, "renameByName": {"_time": "Ora", "active": "Stato", "alert_name": "Tipo alert", "message": "Messaggio"}}}],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "_measurement": true,
+              "_start": true,
+              "_stop": true,
+              "device_id": true,
+              "patient_id": true,
+              "result": true,
+              "severity": true,
+              "table": true
+            },
+            "indexByName": {
+              "_time": 0,
+              "active": 2,
+              "alert_name": 1,
+              "message": 3
+            },
+            "renameByName": {
+              "_time": "Ora",
+              "active": "Stato",
+              "alert_name": "Tipo alert",
+              "message": "Messaggio"
+            }
+          }
+        }
+      ],
       "type": "table"
     }
   ],
   "refresh": "1s",
   "schemaVersion": 41,
-  "tags": ["smartback", "medico", "postura"],
+  "tags": [
+    "smartback",
+    "medico",
+    "postura"
+  ],
   "templating": {
     "list": [
       {
         "current": {},
-        "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+        "datasource": {
+          "type": "influxdb",
+          "uid": "smartback-influx"
+        },
         "definition": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"posture\", tag: \"patient_id\", predicate: (r) => r._measurement == \"posture\", start: -30d)",
         "hide": 2,
         "includeAll": false,
@@ -271,10 +1265,23 @@
       }
     ]
   },
-  "time": {"from": "now-5m", "to": "now"},
-  "timepicker": {"refresh_intervals": ["1s", "2s", "5s", "10s", "30s", "1m", "5m"]},
+  "time": {
+    "from": "now-5m",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "1s",
+      "2s",
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m"
+    ]
+  },
   "timezone": "browser",
   "title": "SmartBack - Monitoraggio paziente",
   "uid": "smartback-overview",
-  "version": 35
+  "version": 42
 }

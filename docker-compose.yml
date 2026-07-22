@@ -73,6 +73,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      - ./mobile/app/assets:/app/assets:ro
       - smartback-backend-data:/app/data
     environment:
       <<: *influx-env

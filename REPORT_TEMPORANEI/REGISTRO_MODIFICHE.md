@@ -613,3 +613,177 @@ Introdurre una modalità notturna attivabile dal Paziente, mostrare in tempo rea
 
 - Controllo TypeScript completato senza errori nel container Expo.
 - Bundle Android Expo generato correttamente con le nuove impostazioni dei grafici.
+
+## 21 luglio 2026 — Dashboard notturna limitata alla sessione live
+
+### Modifiche
+
+- Sostituito nella dashboard Grafana notturna il pannello `Stato mod. notte` con un riquadro `Monitoraggio`.
+- Il nuovo riquadro mostra `ON` su fondo verde durante una sessione attiva e `OFF` su fondo rosso quando il monitoraggio è fermo.
+- Introdotta in InfluxDB la measurement `night_session_state`, aggiornata dal backend con `active=1` all'avvio e `active=0` alla conclusione della sessione.
+- Aggiunta all'avvio del backend la riconciliazione delle sessioni che risultano ancora attive in SQLite.
+- Vincolate la posizione corrente e le query dei quattro grafici notturni alla sola sessione effettivamente attiva.
+- Alla disattivazione i grafici live non mostrano più i dati dell'ultima sessione conclusa; questi rimangono disponibili esclusivamente nello storico.
+- Aggiunto sotto i quattro grafici un istogramma live con le percentuali di posizione supina, prona, decubito destro e decubito sinistro.
+- Le quattro percentuali vengono calcolate solo sui campioni della sessione corrente e tornano a zero al termine della modalità notte.
+- Mantenuti nell'istogramma gli stessi colori utilizzati per le quattro posizioni negli altri pannelli.
+- Aggiunto un test backend per verificare la pubblicazione dello stato ON/OFF con lo stesso identificativo di sessione.
+
+### Verifiche
+
+- Validazione sintattica JSON della dashboard completata correttamente.
+- Test backend della modalità notturna completati senza errori.
+- Verifica delle query e del provisioning Grafana completata sullo stack Docker.
+
+## 21 luglio 2026 — Controlli dashboard notturna
+
+### Modifiche
+
+- Ridotto il riquadro `Monitoraggio` alle stesse proporzioni del corrispondente indicatore presente nella dashboard diurna.
+- Ripristinato accanto all'indicatore il pulsante per attivare o disattivare la modalità notte dalla dashboard Grafana.
+- Mantenuto lo stato esclusivamente nel riquadro `Monitoraggio`, evitando di duplicare la precedente dicitura `Stato mod. notte` nel pannello del pulsante.
+- Limitate le finestre di ricerca delle query live Grafana per evitare che il refresh ogni secondo riesamini l'intero contenuto di InfluxDB e venga annullato prima di restituire i campioni.
+- Verificato che app e Grafana operino sulla stessa sessione: l'avvio da una delle due interfacce è immediatamente valido anche per l'altra, che può successivamente arrestarla.
+- Verificato il comportamento indipendente dalla sorgente: la maglia fisica continua a inviare i propri campioni MQTT senza ricevere comandi da simulatore; solo le maglie simulate cambiano scenario automaticamente.
+- Alla riconnessione MQTT il backend ripristina lo scenario notturno esclusivamente per le maglie simulate con una sessione ancora attiva, evitando uno stato ON accompagnato da campioni diurni dopo un riavvio.
+- Sostituiti nelle query live i `join` Flux tra stato e campioni con un filtro diretto sul `session_id` attivo; i campioni erano presenti e classificati in InfluxDB, ma il collegamento tra tabelle poteva restituire pannelli vuoti o richieste annullate.
+
+## 21 luglio 2026 — Storico diurno sincronizzato con la giornata selezionata
+
+### Modifiche
+
+- Allineati `Dev. Media Pitch`, `Dev. Media Roll`, deviazioni massime, numero di alert e grafici Pitch/Roll all'intervallo della giornata scelta nel selettore.
+- Il cambio della giornata aggiorna anche l'intervallo temporale globale di Grafana, così `v.windowPeriod`, assi e aggregazioni vengono ricalcolati sulla selezione corrente.
+- Rinominato il controllo da `Alert per giornata` a `Storico per giornata`, perché ora governa l'intera dashboard e non soltanto la tabella degli alert.
+- Corretto l'intervallo globale Grafana usando timestamp Unix in millisecondi: le date ISO venivano interpretate come piccoli valori numerici e spostavano erroneamente gli assi dei grafici nel 1970.
+- Limitato il contatore superiore agli eventi posturali attivi, escludendo alert tecnici relativi a batteria, connettività e qualità del dato.
+- Rimossa la risincronizzazione automatica dell'URL al caricamento perché la normalizzazione dei timestamp eseguita da Grafana poteva provocare un ciclo continuo di ricaricamento; l'intervallo viene aggiornato soltanto alla selezione esplicita della giornata.
+
+## 21 luglio 2026 — Vere sessioni diurne ed episodi posturali
+
+### Modifiche
+
+- Aggiunto `session_id` a ogni campione diurno persistito in InfluxDB; la sessione nasce al primo campione e viene rinnovata alla ripresa dopo un'interruzione del flusso.
+- Sostituito il selettore per giornata con un selettore di singole sessioni, etichettate con data, ora di inizio e ora di fine rilevate dai campioni.
+- Vincolati statistiche, grafici e tabella alert sia all'intervallo sia al `session_id` selezionato.
+- Aggiunto il campo `episode_started` agli alert: vale vero soltanto al passaggio da postura corretta al primo stato di allerta.
+- Il contatore `Eventi posturali` conta ora gli episodi distinti e non i passaggi interni tra deviazione prolungata e marcata.
+- Aggiornata l'etichetta del filtro delle sessioni in `Cerca per data o ora`, con un esempio coerente nel campo di ricerca.
+- Rimosse le emoji dalla navigazione e dai pannelli Grafana.
+- Uniformati i collegamenti principali in `DIURNO`, `STORICO D`, `NOTTURNO` e `STORICO N`.
+- Rimossa l'emoji anche dal pulsante di attivazione e disattivazione della modalità notte.
+- Colorati uniformemente i collegamenti Grafana: `HOME` bianco, `DIURNO` e `STORICO D` gialli, `NOTTURNO` e `STORICO N` blu.
+- Modificato il blu della navigazione notturna in una tonalità più scura (`#234f8f`), distinta dal blu dei pulsanti operativi delle interfacce.
+
+## 21 luglio 2026 — Rilevazione delle maglie fisiche da MQTT
+
+### Modifiche
+
+- Separata la rilevazione della presenza fisica della maglia dall'elaborazione dei dati posturali.
+- Il backend rileva ora una smart shirt non appena riceve un qualsiasi topic conforme a `unisadiem/smartshirt/<device>/<packet-type>`.
+- Una maglia che trasmette inizialmente soltanto `ECG` o `STRAINGAUGES_MIXED` compare quindi tra le maglie rilevate nella Home medica.
+- I payload ECG e strain gauge continuano a non essere elaborati, archiviati o utilizzati per il monitoraggio posturale.
+- Limitato a un aggiornamento ogni cinque secondi il salvataggio della presenza, per evitare scritture eccessive causate dai flussi ad alta frequenza.
+- Aggiunto un test automatico che verifica la rilevazione di `tshirt002` da un pacchetto non posturale senza decodificarne il payload.
+- Corretta la rimozione delle maglie fisiche: la rimozione ora libera la proprietà del medico e rende nuovamente acquisibile la maglia da un altro account, conservando telemetria e storico delle assegnazioni.
+- Mantenuta l'archiviazione definitiva per le sole maglie simulate create dal portale.
+
+## 21 luglio 2026 — Dialogo maglie e logout Grafana
+
+### Modifiche
+
+- Ridotti gli spazi verticali nel dialogo di aggiunta della maglia, in particolare tra i campi nome, i messaggi di errore vuoti e i pulsanti di conferma.
+- Compattati titoli, descrizioni e separatore tra acquisizione fisica e creazione simulata.
+- Trasformato il cookie del portale medico in cookie di sessione, non più persistente per otto ore dopo la chiusura completa del browser.
+- Rafforzato il comando `Esci`: oltre a invalidare la sessione nel database, cancella i cookie del sito e impedisce il riuso della pagina dalla cache.
+- Allineato il pulsante `Annulla` nell'angolo inferiore destro del popup di aggiunta della maglia.
+- Allineato allo stesso modo il pulsante `Annulla` del popup di aggiunta del paziente.
+
+## 21 luglio 2026 — Riorganizzazione monitoraggio mobile diurno e notturno
+
+### Modifiche
+
+- Reso più contenuto il focus dei campi di accesso e registrazione: bordo verde e fondo evidenziato senza elevazione che fuoriesce dal riquadro.
+- Separate le sezioni `DIURNO` e `NOTTURNO` in due schede dedicate, sia per il paziente sia per il medico che consulta un paziente.
+- Rimosso il precedente riquadro riepilogativo della deviazione corrente con avatar e colore variabile.
+- Introdotte due righe di metriche live: Pitch, deviazione Pitch e relativo tempo; Roll, deviazione Roll e relativo tempo.
+- Applicati ai riquadri di deviazione i valori moderate/marked ricevuti dal backend, con fallback 10°/20°; applicate ai tempi le fasce Grafana verde sotto 5 s, gialla 5–15 s e rossa da 15 s.
+- Riordinati i riferimenti di calibrazione nella riga richiesta e mantenuti separati i grafici live Pitch e Roll.
+- Impostata per gli storici diurni una scala minima fissa da −30° a +30°, che si espande automaticamente in presenza di valori esterni.
+- Aumentati fino a cinque i riferimenti temporali sull'asse X e aggiunti margini interni per evitare il taglio delle etichette laterali.
+- Racchiuso ogni input di autenticazione in un contenitore arrotondato con ritaglio, eliminando la superficie rettangolare del focus visibile su Android.
+- Abilitato il ridimensionamento della schermata di autenticazione su Android e l'adattamento automatico degli inset della tastiera, mantenendo scorrevole il form durante la compilazione.
+- Spostate le etichette temporali dello storico all'interno dell'8%–92% della larghezza utile, così prima e ultima indicazione non vengono tagliate dai bordi.
+- Corretto l'ordine delle metriche diurne: `PITCH` e `ROLL` sono ora i primi riquadri a sinistra, seguiti rispettivamente da deviazione e tempo di deviazione.
+
+### Verifica integrità storico diurno
+
+- Verificata la catena InfluxDB → endpoint storico → grafici mobile sui dati effettivamente presenti.
+- Confermato che il grafico Pitch usa esclusivamente `pitch_deviation_deg` e il grafico Roll usa esclusivamente `roll_deviation_deg`.
+- Confrontati oltre 121.000 campioni grezzi: la deviazione coincide con `angolo − riferimento` con residuo massimo di 0,01°, compatibile con l'arrotondamento a due decimali.
+- Verificati ordinamento cronologico, intervalli selezionati, aggregazione temporale e separazione per paziente.
+- Eseguiti con esito positivo 13 test del contratto storico e il controllo TypeScript dell'app.
+- Uniformato il focus degli intervalli dello storico diurno al verde chiaro della scheda `DIURNO` e del riquadro paziente.
+- Sostituito nel riquadro del paziente selezionato il codice interno con il codice fiscale, esposto dal backend soltanto nei dati autorizzati dell'utente.
+
+## 21 luglio 2026 — Isolamento della telemetria in tempo reale per paziente
+
+### Correzione
+
+- Corretto il filtro mobile che, nella vista paziente, utilizzava erroneamente l'ultimo campione globale ricevuto dal WebSocket.
+- La vista paziente accetta ora esclusivamente campioni il cui `patient_id` coincide con il proprio codice paziente.
+- Autenticato il WebSocket tramite la sessione dell'app e vincolata lato backend ogni connessione a un solo paziente autorizzato.
+- Il medico riceve esclusivamente la telemetria del paziente selezionato; senza selezione non viene aperta alcuna connessione live.
+- Impedita anche lato server la consegna di telemetria appartenente ad altri pazienti, evitando che la protezione dipenda soltanto dal rendering dell'app.
+- Aggiunti test automatici di instradamento che verificano che un campione di Andrea non venga consegnato alla connessione di Simona e che messaggi privi di paziente non vengano diffusi.
+
+## 21 luglio 2026 — Accesso richiesto a ogni avvio dell'app
+
+### Modifiche
+
+- Rimossa la riapertura automatica dell'ultima sessione utente salvata in `SecureStore`.
+- La sessione di autenticazione resta valida soltanto durante l'esecuzione corrente dell'app.
+- A ogni nuovo avvio o scansione del QR viene cancellata un'eventuale sessione precedente e mostrata sempre l'interfaccia login/registrazione.
+- Le preferenze non legate all'identità, come il tema, continuano a essere conservate separatamente.
+- Corretto l'ordine visivo dei valori di calibrazione: `RIFERIMENTO PITCH` a sinistra e `RIFERIMENTO ROLL` a destra.
+
+## 22 luglio 2026 — Storico diurno mobile per sessione
+
+### Modifiche
+
+- Uniformato lo storico diurno del paziente e del medico aggiungendo l'elenco delle sessioni diurne disponibili.
+- Aggiunta la ricerca delle sessioni per data o ora e la possibilità di tornare all'intera finestra temporale selezionata.
+- Quando viene scelta una sessione, percentuali e grafici Pitch/Roll vengono calcolati esclusivamente tra l'inizio e la fine della sessione.
+- Mantenute nel solo profilo Paziente le percentuali `Postura corretta` e `Postura scorretta`.
+- Le percentuali provengono ora dal medesimo risultato storico del backend: un campione è corretto solo quando sia Pitch sia Roll restano sotto le rispettive soglie moderate; una deviazione moderata o marcata su almeno un asse viene conteggiata come scorretta.
+- Rimossa dall'area Paziente la nota grigia `Soglie dimostrative, non validate per uso clinico` visualizzata dopo il monitoraggio.
+- Negli storici diurno e notturno, la selezione di una singola sessione disabilita i pulsanti delle finestre temporali e ne rimuove l'evidenziazione; i pulsanti tornano disponibili scegliendo la vista complessiva.
+- Rimossi dai grafici live Pitch e Roll i sottotitoli grigi relativi al valore rilevato, alla calibrazione e al numero di campioni.
+- Rimossa la parola `Paziente` dalla descrizione sotto il saluto; per il profilo paziente rimane soltanto `Il tuo monitoraggio posturale`.
+
+## 22 luglio 2026 — Visualizzazione controllata delle credenziali
+
+### Modifiche
+
+- Aggiunta un'icona vettoriale a forma di occhio ai campi password dell'app, senza utilizzare emoji.
+- Il comando permette di mostrare e nascondere il contenuto e dispone di un'etichetta accessibile coerente con lo stato.
+- Reso nascosto per impostazione predefinita anche il codice medico nell'app e aggiunto lo stesso comando di visualizzazione.
+- Aggiunto il comando mostra/nascondi al codice medico nella schermata di registrazione del portale Grafana, riutilizzando l'icona SVG già adottata per le password.
+- Corretto l'asse temporale dei grafici storici diurni: le finestre da 1, 6, 24 ore e 7 giorni mostrano sempre l'intervallo completo richiesto, anche quando la prima parte non contiene campioni.
+- I dati vengono posizionati in base al timestamp reale, lasciando vuoto lo spazio precedente al primo campione e successivo all'ultimo; selezionando una sessione, l'asse usa invece l'inizio e la fine effettivi della sessione.
+
+## 22 luglio 2026 — Riorganizzazione del monitoraggio notturno mobile
+
+### Modifiche
+
+- Rimossa dal pannello Paziente inattivo la nota grigia relativa all'attivazione automatica del tema e alla vista notturna.
+- Durante una sessione attiva, il badge `Live` rimane accanto al titolo e il pulsante rosso di arresto è stato spostato immediatamente sotto l'intestazione.
+- Il medico visualizza posizione, tempi, distribuzione percentuale e durata della sessione, ma non dispone di comandi per avviare o terminare la modalità notte.
+- Reso disponibile il grafico a torta live anche nella vista Medico; la torta è stata ridimensionata e centrata e la legenda è stata separata per evitare tagli dei nomi delle posizioni.
+- Sostituita la riga grigia con maglia e durata con un riquadro dedicato `DURATA TOTALE`.
+- Separata la preferenza manuale del tema dall'attivazione automatica notturna: la preferenza viene salvata per singolo utente, mentre la modalità notte applica soltanto un override temporaneo.
+- Al logout l'override notturno viene rimosso senza interrompere la sessione sul backend; al successivo accesso viene caricata la preferenza del nuovo account e l'eventuale modalità notte attiva viene poi sincronizzata.
+- Aggiunto nella sezione `NOTTURNO` del Paziente un riquadro `Storico notturno`, con lo stesso sfondo del riquadro esplicativo del monitoraggio.
+- Il riquadro contiene un solo istogramma verticale con le percentuali persistenti complessive di supino, prono, decubito destro e decubito sinistro.
+- Introdotto un endpoint aggregato che calcola i totali su tutte le sessioni notturne concluse, senza il limite dell'elenco paginato e senza includere la sessione live ancora attiva.
+- Aumentato lo spazio sopra le barre degli istogrammi notturni e riallineata la guida del 100%, evitando che la linea orizzontale attraversi le etichette percentuali.

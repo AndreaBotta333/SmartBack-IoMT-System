@@ -2,8 +2,10 @@ import os
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import Mock
 
 from app.database import init_database
+from app.mqtt_handler import SmartBackMqttHandler
 
 
 class DeviceAssignmentSchemaTests(unittest.TestCase):
@@ -81,6 +83,30 @@ class DeviceAssignmentSchemaTests(unittest.TestCase):
         ).fetchall()
         self.assertEqual(len(history), 1)
         self.assertEqual(history[0]["patient_id"], "patient-a")
+
+
+class RawSmartShirtDiscoveryTests(unittest.TestCase):
+    def test_unsupported_packet_still_marks_physical_shirt_as_seen(self) -> None:
+        seen = Mock()
+        handler = SmartBackMqttHandler(
+            host="mosquitto",
+            port=1883,
+            posture_topic="smartback/normalized/posture",
+            device_topic="smartback/normalized/device",
+            alert_topic="smartback/alerts/posture",
+            stale_seconds=10,
+            posture_engine=Mock(),
+            influx=Mock(),
+            broadcast=Mock(),
+            device_seen=seen,
+        )
+        message = Mock()
+        message.topic = "unisadiem/smartshirt/tshirt002/ECG"
+        message.payload = b"this payload must not be parsed"
+
+        handler._on_message(Mock(), None, message)
+
+        seen.assert_called_once_with("tshirt002", "measured")
 
 
 if __name__ == "__main__":

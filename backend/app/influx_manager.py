@@ -1,7 +1,7 @@
 """InfluxDB persistence and query operations."""
 
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from influxdb_client import InfluxDBClient, Point, WritePrecision
@@ -31,6 +31,7 @@ class InfluxManager:
             Point("posture")
             .tag("device_id", sample["device_id"])
             .tag("patient_id", sample["patient_id"])
+            .tag("session_id", sample["session_id"])
             .tag("status", sample["posture_status"])
             .tag("dominant_axis", sample["dominant_axis"])
             .tag("pitch_status", sample["pitch_status"])
@@ -58,6 +59,36 @@ class InfluxManager:
         )
         self.write_api.write(bucket=self.bucket, org=self.org, record=point)
 
+    def query_day_sessions(self, patient_code: str) -> list[dict[str, str]]:
+        """Return daytime telemetry sessions with their first and last samples."""
+        safe_patient = self._flux_string(patient_code)
+        base = f'''from(bucket: "{self.bucket}")
+  |> range(start: 0)
+  |> filter(fn: (r) => r._measurement == "posture" and r._field == "pitch_deviation_deg" and r.patient_id == "{safe_patient}")
+  |> filter(fn: (r) => exists r.session_id and r.session_id != "")
+  |> group(columns: ["session_id"])'''
+        sessions: dict[str, dict[str, str]] = {}
+        for boundary, selector in (("start", "first"), ("stop", "last")):
+            tables = self.client.query_api().query(
+                query=f"{base}\n  |> {selector}()", org=self.org
+            )
+            for table in tables:
+                for record in table.records:
+                    session_id = str(record.values.get("session_id") or "")
+                    if not session_id or record.get_time() is None:
+                        continue
+                    instant = record.get_time().astimezone(timezone.utc)
+                    if boundary == "stop":
+                        instant += timedelta(milliseconds=1)
+                    sessions.setdefault(session_id, {"session_id": session_id})[boundary] = (
+                        instant.isoformat()
+                    )
+        return sorted(
+            [item for item in sessions.values() if "start" in item and "stop" in item],
+            key=lambda item: item["start"],
+            reverse=True,
+        )
+
     def persist_night_position(self, sample: dict[str, Any]) -> None:
         position_codes = {
             "unknown": 0,
@@ -80,6 +111,25 @@ class InfluxManager:
             .field("classifier_version", int(sample["classifier_version"]))
             .field("data_gap_seconds", float(sample["data_gap_seconds"]))
             .time(int(sample["timestamp"]), WritePrecision.MS)
+        )
+        self.write_api.write(bucket=self.bucket, org=self.org, record=point)
+
+    def persist_night_session_state(
+        self,
+        *,
+        patient_code: str,
+        session_id: str,
+        device_id: str,
+        active: bool,
+    ) -> None:
+        """Persist the current night-session state used by live Grafana panels."""
+        point = (
+            Point("night_session_state")
+            .tag("session_id", session_id)
+            .tag("device_id", device_id)
+            .tag("patient_id", patient_code)
+            .field("active", 1 if active else 0)
+            .time(datetime.now(timezone.utc), WritePrecision.MS)
         )
         self.write_api.write(bucket=self.bucket, org=self.org, record=point)
 
@@ -362,6 +412,25 @@ union(tables: [firstSample, lastSample])'''
                 })
         alerts.sort(key=lambda item: item["timestamp"], reverse=True)
         return alerts[:limit]
+
+    def query_alert_session_ids(self, patient_code: str) -> list[str]:
+        """Return every alert session available for a patient, newest first."""
+        safe_patient = self._flux_string(patient_code)
+        query = f'''import "influxdata/influxdb/schema"
+schema.tagValues(
+  bucket: "{self.bucket}",
+  tag: "session_id",
+  predicate: (r) => r._measurement == "alerts" and r.patient_id == "{safe_patient}",
+  start: 0
+)'''
+        tables = self.client.query_api().query(query=query, org=self.org)
+        sessions = {
+            str(record.get_value())
+            for table in tables
+            for record in table.records
+            if record.get_value()
+        }
+        return sorted(sessions, reverse=True)
 
     @staticmethod
     def group_alerts_by_session(

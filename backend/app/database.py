@@ -13,7 +13,8 @@ def init_database(path: str) -> sqlite3.Connection:
             id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL, password_salt TEXT NOT NULL,
             role TEXT NOT NULL CHECK(role IN ('patient', 'doctor')),
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            account_registered INTEGER NOT NULL DEFAULT 1
         );
         CREATE TABLE IF NOT EXISTS sessions (
             token TEXT PRIMARY KEY, user_id TEXT NOT NULL,
@@ -54,6 +55,8 @@ def init_database(path: str) -> sqlite3.Connection:
         CREATE TABLE IF NOT EXISTS devices (
             device_id TEXT PRIMARY KEY,
             display_name TEXT,
+            owner_doctor_id TEXT,
+            doctor_device_number INTEGER,
             source_type TEXT NOT NULL DEFAULT 'physical'
                 CHECK(source_type IN ('physical', 'simulated')),
             first_seen_at TEXT NOT NULL,
@@ -145,6 +148,15 @@ def _migrate_devices(connection: sqlite3.Connection) -> None:
         )
     if "archived_at" not in columns:
         connection.execute("ALTER TABLE devices ADD COLUMN archived_at TEXT")
+    if "owner_doctor_id" not in columns:
+        connection.execute("ALTER TABLE devices ADD COLUMN owner_doctor_id TEXT")
+    if "doctor_device_number" not in columns:
+        connection.execute("ALTER TABLE devices ADD COLUMN doctor_device_number INTEGER")
+    connection.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_doctor_number "
+        "ON devices(owner_doctor_id,doctor_device_number) "
+        "WHERE owner_doctor_id IS NOT NULL AND doctor_device_number IS NOT NULL"
+    )
 
 
 def _seed_physical_shirt(connection: sqlite3.Connection) -> None:
@@ -166,6 +178,7 @@ def _migrate_users(connection: sqlite3.Connection) -> None:
         ("fiscal_code", "TEXT"),
         ("professional_verified", "INTEGER NOT NULL DEFAULT 0"),
         ("avatar_data", "TEXT"),
+        ("account_registered", "INTEGER NOT NULL DEFAULT 1"),
     )
     for column, definition in migrations:
         if column not in columns:

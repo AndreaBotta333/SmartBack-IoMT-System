@@ -2,10 +2,11 @@
 
 ## Confine della prima fondazione tecnica
 
-La modalita notturna viene attivata e arrestata esclusivamente dal paziente.
+La modalita notturna puo essere attivata e arrestata dal paziente tramite app
+oppure da un medico verificato tramite la dashboard del paziente.
 Il backend collega ogni sessione alla maglia assegnata in quel momento e ne
-conserva il ciclo di vita in SQLite. Il medico associato puo consultare lo
-storico, ma non puo avviare o fermare la rilevazione al posto del paziente.
+conserva il ciclo di vita in SQLite, incluso chi ha avviato la sessione e se
+l'arresto e stato richiesto dal paziente o dal medico.
 
 Nell'app il paziente usa il pulsante `MODALITÀ NOTTE`. L'attivazione abilita
 automaticamente il tema scuro e sostituisce temporaneamente la vista posturale
@@ -18,6 +19,15 @@ e `sconosciuto` direttamente dal vettore di gravita. Smoothing, isteresi e un
 tempo minimo di stabilizzazione evitano cambi prodotti dal rumore o da una
 transizione momentanea. La serie viene salvata nella measurement InfluxDB
 `night_position` solo quando esiste una sessione notturna attiva.
+
+L'avvio e la conclusione di ogni sessione producono inoltre un punto nella
+measurement `night_session_state`, identificato dai tag `session_id`,
+`device_id` e `patient_id`. Il campo intero `active` vale `1` durante la
+sessione e `0` dopo la conclusione. La dashboard Grafana live usa questo stato
+per escludere immediatamente i dati della sessione conclusa senza cancellarli
+dallo storico. All'avvio il backend ripubblica inoltre lo stato delle eventuali
+sessioni ancora attive in SQLite, mantenendo coerente la dashboard anche dopo un
+riavvio dei servizi.
 
 La convenzione iniziale coincide con il simulatore: `-Z=prono`, `+Z=supino`,
 `+X=decubito destro`, `-X=decubito sinistro`. Prima di un uso clinico i versi
@@ -50,7 +60,9 @@ GET  /api/v1/night-monitoring/history?patient_id=<id>&limit=50
 GET  /api/v1/night-monitoring/sessions/<session_id>
 ```
 
-`start` e `stop` sono riservati al paziente. `status`, `history` e il dettaglio
+Gli endpoint `start` e `stop` sopra restano legati all'utente paziente. La
+dashboard medica usa endpoint Grafana dedicati, protetti dalla sessione del
+medico e dall'associazione medico-paziente. `status`, `history` e il dettaglio
 sono consultabili dal paziente oppure da un medico associato; per il medico il
 parametro `patient_id` e obbligatorio dove previsto.
 
@@ -79,6 +91,15 @@ dal classificatore e lo stesso della maglia reale.
 Le dashboard notturne sono raggiungibili dalla scheda del paziente nella Home
 medica e dai collegamenti presenti in tutte le altre dashboard. Mantengono
 separati monitoraggio diurno e notturno.
+
+La vista live include il controllo `Gestione modalita notte`: mostra lo stato
+corrente e consente al medico associato di avviare o terminare la sessione con
+una conferma esplicita. Lo stesso stato e condiviso con l'app del paziente.
+Esiste una sola sessione attiva per paziente e maglia: una sessione avviata dal
+medico puo essere fermata dal paziente e viceversa. Il comando non cambia il
+percorso dei dati della maglia fisica; abilita il classificatore backend per i
+campioni normalizzati della maglia assegnata. Solo per una maglia dichiarata
+simulata viene inoltre richiesto al simulatore lo scenario notturno.
 
 La vista live mostra:
 

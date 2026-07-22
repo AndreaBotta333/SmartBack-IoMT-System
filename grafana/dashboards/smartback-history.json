@@ -1,5 +1,7 @@
 {
-  "annotations": {"list": []},
+  "annotations": {
+    "list": []
+  },
   "editable": false,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -7,7 +9,7 @@
   "links": [
     {
       "asDropdown": false,
-      "icon": "arrow-left",
+      "icon": "home-alt",
       "includeVars": false,
       "keepTime": false,
       "tags": [],
@@ -19,15 +21,27 @@
     },
     {
       "asDropdown": false,
-      "icon": "arrow-left",
+      "icon": "sun",
       "includeVars": true,
       "keepTime": false,
       "tags": [],
       "targetBlank": false,
-      "title": "🟢  TORNA AL MONITORAGGIO LIVE",
-      "tooltip": "Apri la dashboard in tempo reale",
+      "title": "DIURNO",
+      "tooltip": "Monitoraggio diurno corrente",
       "type": "link",
       "url": "/grafana/d/smartback-overview/smartback-monitoraggio-paziente?refresh=1s"
+    },
+    {
+      "asDropdown": false,
+      "icon": "history",
+      "includeVars": true,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": false,
+      "title": "STORICO D",
+      "tooltip": "Schermata attuale: storico diurno",
+      "type": "link",
+      "url": "/grafana/d/smartback-history/smartback-storico-paziente"
     },
     {
       "asDropdown": false,
@@ -36,7 +50,7 @@
       "keepTime": false,
       "tags": [],
       "targetBlank": false,
-      "title": "MONITORAGGIO NOTTURNO",
+      "title": "NOTTURNO",
       "tooltip": "Apri il monitoraggio notturno",
       "type": "link",
       "url": "/grafana/d/smartback-night/smartback-monitoraggio-notturno?refresh=1s"
@@ -48,7 +62,7 @@
       "keepTime": false,
       "tags": [],
       "targetBlank": false,
-      "title": "STORICO NOTTURNO",
+      "title": "STORICO N",
       "tooltip": "Apri lo storico notturno",
       "type": "link",
       "url": "/grafana/d/smartback-night-history/smartback-storico-notturno"
@@ -57,111 +71,625 @@
   "liveNow": false,
   "panels": [
     {
-      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "smartback-influx"
+      },
       "description": "Scostamento medio assoluto avanti/indietro nel periodo.",
-      "fieldConfig": {"defaults": {"color": {"fixedColor": "blue", "mode": "fixed"}, "decimals": 1, "noValue": "--", "unit": "degree"}, "overrides": []},
-      "gridPos": {"h": 4, "w": 5, "x": 0, "y": 0},
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "blue",
+            "mode": "fixed"
+          },
+          "decimals": 1,
+          "noValue": "--",
+          "unit": "degree"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 0,
+        "y": 0
+      },
       "id": 2,
-      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "import \"math\"\nfrom(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"pitch_deviation_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> map(fn: (r) => ({r with _value: math.abs(x: float(v: r._value))})) |> mean()", "refId": "A"}],
-      "title": "Deviazione pitch media",
+      "targets": [
+        {
+          "query": "import \"math\"\nfrom(bucket: \"posture\") |> range(start: time(v: \"${alert_day_start}\"), stop: time(v: \"${alert_day_stop}\")) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"pitch_deviation_deg\" and r.patient_id == \"${patient_id}\" and r.session_id == \"${session_id}\") |> group(columns: []) |> map(fn: (r) => ({r with _value: math.abs(x: float(v: r._value))})) |> mean()",
+          "refId": "A"
+        }
+      ],
+      "title": "Dev. Media P",
       "type": "stat"
     },
     {
-      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "smartback-influx"
+      },
       "description": "Scostamento medio assoluto laterale nel periodo.",
-      "fieldConfig": {"defaults": {"color": {"fixedColor": "purple", "mode": "fixed"}, "decimals": 1, "noValue": "--", "unit": "degree"}, "overrides": []},
-      "gridPos": {"h": 4, "w": 5, "x": 5, "y": 0},
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "purple",
+            "mode": "fixed"
+          },
+          "decimals": 1,
+          "noValue": "--",
+          "unit": "degree"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 5,
+        "y": 0
+      },
       "id": 3,
-      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "import \"math\"\nfrom(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"roll_deviation_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> map(fn: (r) => ({r with _value: math.abs(x: float(v: r._value))})) |> mean()", "refId": "A"}],
-      "title": "Deviazione roll media",
+      "targets": [
+        {
+          "query": "import \"math\"\nfrom(bucket: \"posture\") |> range(start: time(v: \"${alert_day_start}\"), stop: time(v: \"${alert_day_stop}\")) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"roll_deviation_deg\" and r.patient_id == \"${patient_id}\" and r.session_id == \"${session_id}\") |> group(columns: []) |> map(fn: (r) => ({r with _value: math.abs(x: float(v: r._value))})) |> mean()",
+          "refId": "A"
+        }
+      ],
+      "title": "Dev. Media R",
       "type": "stat"
     },
     {
-      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "smartback-influx"
+      },
       "description": "Massima deviazione assoluta del pitch rilevata nel periodo.",
-      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "decimals": 1, "noValue": "--", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 10}, {"color": "red", "value": 20}]}, "unit": "degree"}, "overrides": []},
-      "gridPos": {"h": 4, "w": 5, "x": 10, "y": 0},
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "noValue": "--",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 20
+              }
+            ]
+          },
+          "unit": "degree"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 10,
+        "y": 0
+      },
       "id": 4,
-      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "import \"math\"\nfrom(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"pitch_deviation_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> map(fn: (r) => ({r with _value: math.abs(x: float(v: r._value))})) |> max()", "refId": "A"}],
-      "title": "Deviazione pitch massima",
+      "targets": [
+        {
+          "query": "import \"math\"\nfrom(bucket: \"posture\") |> range(start: time(v: \"${alert_day_start}\"), stop: time(v: \"${alert_day_stop}\")) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"pitch_deviation_deg\" and r.patient_id == \"${patient_id}\" and r.session_id == \"${session_id}\") |> group(columns: []) |> map(fn: (r) => ({r with _value: math.abs(x: float(v: r._value))})) |> max()",
+          "refId": "A"
+        }
+      ],
+      "title": "Dev. P MAX",
       "type": "stat"
     },
     {
-      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "smartback-influx"
+      },
       "description": "Massima deviazione assoluta del roll rilevata nel periodo.",
-      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "decimals": 1, "noValue": "--", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 10}, {"color": "red", "value": 20}]}, "unit": "degree"}, "overrides": []},
-      "gridPos": {"h": 4, "w": 5, "x": 15, "y": 0},
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "noValue": "--",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 20
+              }
+            ]
+          },
+          "unit": "degree"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 15,
+        "y": 0
+      },
       "id": 10,
-      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "import \"math\"\nfrom(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"roll_deviation_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> map(fn: (r) => ({r with _value: math.abs(x: float(v: r._value))})) |> max()", "refId": "A"}],
-      "title": "Deviazione roll massima",
+      "targets": [
+        {
+          "query": "import \"math\"\nfrom(bucket: \"posture\") |> range(start: time(v: \"${alert_day_start}\"), stop: time(v: \"${alert_day_stop}\")) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"roll_deviation_deg\" and r.patient_id == \"${patient_id}\" and r.session_id == \"${session_id}\") |> group(columns: []) |> map(fn: (r) => ({r with _value: math.abs(x: float(v: r._value))})) |> max()",
+          "refId": "A"
+        }
+      ],
+      "title": "Dev. R MAX",
       "type": "stat"
     },
     {
-      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
-      "description": "Numero di eventi di allerta attivi registrati nel periodo.",
-      "fieldConfig": {"defaults": {"color": {"fixedColor": "red", "mode": "fixed"}, "decimals": 0, "noValue": "0"}, "overrides": []},
-      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "smartback-influx"
+      },
+      "description": "Numero di episodi posturali distinti iniziati nella sessione selezionata.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "red",
+            "mode": "fixed"
+          },
+          "decimals": 0,
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 0
+      },
       "id": 5,
-      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value",
+        "wideLayout": true
+      },
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"alerts\" and r._field == \"active\" and r.patient_id == \"${patient_id}\" and r._value == true) |> group(columns: []) |> count()", "refId": "A"}],
-      "title": "Eventi di allerta",
+      "targets": [
+        {
+          "query": "from(bucket: \"posture\") |> range(start: time(v: \"${alert_day_start}\"), stop: time(v: \"${alert_day_stop}\")) |> filter(fn: (r) => r._measurement == \"alerts\" and r._field == \"episode_started\" and r.patient_id == \"${patient_id}\" and r.session_id == \"${session_id}\" and r.category == \"posture\" and r._value == true) |> group(columns: []) |> count()",
+          "refId": "A"
+        }
+      ],
+      "title": "Eventi posturali",
       "type": "stat"
     },
     {
-      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "smartback-influx"
+      },
       "description": "Storico dell'inclinazione avanti/indietro nell'intervallo selezionato.",
-      "fieldConfig": {"defaults": {"color": {"fixedColor": "blue", "mode": "fixed"}, "custom": {"axisBorderShow": false, "axisCenteredZero": true, "axisColorMode": "text", "axisLabel": "gradi", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 15, "gradientMode": "opacity", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 4, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "decimals": 1, "unit": "degree"}, "overrides": []},
-      "gridPos": {"h": 10, "w": 12, "x": 0, "y": 4},
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "blue",
+            "mode": "fixed"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": true,
+            "axisColorMode": "text",
+            "axisLabel": "gradi",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "opacity",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 4,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "decimals": 1,
+          "unit": "degree"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
       "id": 6,
-      "options": {"legend": {"calcs": [], "displayMode": "hidden", "placement": "bottom", "showLegend": false}, "tooltip": {"hideZeros": false, "mode": "single", "sort": "none"}},
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "hidden",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"pitch_deviation_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false) |> set(key: \"_field\", value: \"Inclinazione avanti/indietro\")", "refId": "A"}],
+      "targets": [
+        {
+          "query": "from(bucket: \"posture\") |> range(start: time(v: \"${alert_day_start}\"), stop: time(v: \"${alert_day_stop}\")) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"pitch_deviation_deg\" and r.patient_id == \"${patient_id}\" and r.session_id == \"${session_id}\") |> group(columns: []) |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false) |> set(key: \"_field\", value: \"Inclinazione avanti/indietro\")",
+          "refId": "A"
+        }
+      ],
       "title": "Storico inclinazione avanti/indietro",
       "type": "timeseries"
     },
     {
-      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+      "datasource": {
+        "type": "influxdb",
+        "uid": "smartback-influx"
+      },
       "description": "Storico dell'inclinazione laterale nell'intervallo selezionato.",
-      "fieldConfig": {"defaults": {"color": {"fixedColor": "purple", "mode": "fixed"}, "custom": {"axisBorderShow": false, "axisCenteredZero": true, "axisColorMode": "text", "axisLabel": "gradi", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 15, "gradientMode": "opacity", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 4, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "decimals": 1, "unit": "degree"}, "overrides": []},
-      "gridPos": {"h": 10, "w": 12, "x": 12, "y": 4},
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "fixedColor": "purple",
+            "mode": "fixed"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": true,
+            "axisColorMode": "text",
+            "axisLabel": "gradi",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "opacity",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 4,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "decimals": 1,
+          "unit": "degree"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      },
       "id": 7,
-      "options": {"legend": {"calcs": [], "displayMode": "hidden", "placement": "bottom", "showLegend": false}, "tooltip": {"hideZeros": false, "mode": "single", "sort": "none"}},
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "hidden",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"roll_deviation_deg\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false) |> set(key: \"_field\", value: \"Inclinazione laterale\")", "refId": "A"}],
+      "targets": [
+        {
+          "query": "from(bucket: \"posture\") |> range(start: time(v: \"${alert_day_start}\"), stop: time(v: \"${alert_day_stop}\")) |> filter(fn: (r) => r._measurement == \"posture\" and r._field == \"roll_deviation_deg\" and r.patient_id == \"${patient_id}\" and r.session_id == \"${session_id}\") |> group(columns: []) |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false) |> set(key: \"_field\", value: \"Inclinazione laterale\")",
+          "refId": "A"
+        }
+      ],
       "title": "Storico inclinazione laterale",
       "type": "timeseries"
     },
     {
-      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
-      "description": "Alert dell'intervallo selezionato, ordinati e identificati per sessione di monitoraggio.",
-      "fieldConfig": {"defaults": {"custom": {"align": "auto", "cellOptions": {"type": "auto"}, "filterable": true, "inspect": false}}, "overrides": [{"matcher": {"id": "byName", "options": "Messaggio"}, "properties": [{"id": "custom.width", "value": 420}]}, {"matcher": {"id": "byName", "options": "Stato"}, "properties": [{"id": "mappings", "value": [{"options": {"false": {"color": "green", "index": 0, "text": "Risolto"}, "true": {"color": "red", "index": 1, "text": "Attivo"}}, "type": "value"}]}, {"id": "custom.cellOptions", "value": {"mode": "basic", "type": "color-text"}}]}]},
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 14},
-      "id": 9,
-      "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true},
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 14
+      },
+      "id": 11,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "<iframe src=\"/api/v1/grafana/patients/${patient_id}/alert-session-control?alert_day_start=${alert_day_start}&session_id=${session_id}\" title=\"Selezione sessione diurna\" style=\"display:block;width:100%;height:100%;min-height:118px;border:0;background:#111217\"></iframe>",
+        "mode": "html"
+      },
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "import \"strings\"\nbase = from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"alerts\" and r.patient_id == \"${patient_id}\")\nactive = base |> filter(fn: (r) => r._field == \"active\") |> rename(columns: {_value: \"active\"}) |> map(fn: (r) => ({r with session_id: if exists r.session_id then r.session_id else \"legacy\"})) |> keep(columns: [\"_time\", \"code\", \"severity\", \"session_id\", \"active\"])\nmessages = base |> filter(fn: (r) => r._field == \"message\") |> rename(columns: {_value: \"message\"}) |> map(fn: (r) => ({r with session_id: if exists r.session_id then r.session_id else \"legacy\"})) |> keep(columns: [\"_time\", \"code\", \"severity\", \"session_id\", \"message\"])\njoin(tables: {active: active, messages: messages}, on: [\"_time\", \"code\", \"severity\", \"session_id\"]) |> map(fn: (r) => ({r with session_name: if r.session_id == \"legacy\" then \"Sessione precedente\" else r.session_id, alert_name: if r.code == \"POSTURE_MARKED_DEVIATION\" then \"Deviazione marcata\" else if r.code == \"POSTURE_PROLONGED_DEVIATION\" then \"Deviazione prolungata\" else if r.code == \"POSTURE_OK\" then \"Postura regolare\" else if r.code == \"DATA_STREAM_STALE\" then \"Flusso dati interrotto\" else if r.code == \"DATA_STREAM_RESTORED\" then \"Flusso dati ripristinato\" else if r.code == \"BATTERY_CRITICAL\" then \"Batteria critica\" else if r.code == \"BATTERY_LOW\" then \"Batteria bassa\" else if r.code == \"BATTERY_RECOVERED\" then \"Batteria ripristinata\" else if r.code == \"ACC_SEQUENCE_GAP\" then \"Pacchetti mancanti\" else if r.code == \"DATA_LOSS\" then \"Perdita dati maglia\" else \"Errore elaborazione\", message: if strings.strlen(v: r.message) > 70 then strings.substring(v: r.message, start: 0, end: 70) + \"…\" else r.message})) |> keep(columns: [\"session_name\", \"_time\", \"alert_name\", \"active\", \"message\"]) |> group() |> sort(columns: [\"session_name\", \"_time\"], desc: true) |> limit(n: 100)", "refId": "A"}],
-      "title": "Alert per sessione",
-      "transformations": [{"id": "organize", "options": {"excludeByName": {"_measurement": true, "_start": true, "_stop": true, "device_id": true, "patient_id": true, "result": true, "severity": true, "session_id": true, "table": true}, "indexByName": {"session_name": 0, "_time": 1, "alert_name": 2, "active": 3, "message": 4}, "renameByName": {"_time": "Ora", "active": "Stato", "alert_name": "Tipo alert", "message": "Messaggio", "session_name": "Sessione"}}}],
+      "title": "",
+      "transparent": true,
+      "type": "text"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "smartback-influx"
+      },
+      "description": "Eventi di alert registrati nella sessione diurna selezionata.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Messaggio"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 420
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Stato"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "false": {
+                        "color": "green",
+                        "index": 0,
+                        "text": "Risolto"
+                      },
+                      "true": {
+                        "color": "red",
+                        "index": 1,
+                        "text": "Attivo"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "basic",
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Ora"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "time: DD/MM/YY HH:mm:ss"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 19
+      },
+      "id": 9,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "12.0.2",
+      "targets": [
+        {
+          "query": "import \"strings\"\nbase = from(bucket: \"posture\") |> range(start: time(v: \"${alert_day_start}\"), stop: time(v: \"${alert_day_stop}\")) |> filter(fn: (r) => r._measurement == \"alerts\" and r.patient_id == \"${patient_id}\" and r.session_id == \"${session_id}\")\nactive = base |> filter(fn: (r) => r._field == \"active\") |> rename(columns: {_value: \"active\"}) |> keep(columns: [\"_time\", \"code\", \"severity\", \"active\"])\nmessages = base |> filter(fn: (r) => r._field == \"message\") |> rename(columns: {_value: \"message\"}) |> keep(columns: [\"_time\", \"code\", \"severity\", \"message\"])\njoin(tables: {active: active, messages: messages}, on: [\"_time\", \"code\", \"severity\"]) |> map(fn: (r) => ({r with alert_name: if r.code == \"POSTURE_MARKED_DEVIATION\" then \"Forte inclinazione\" else if r.code == \"POSTURE_PROLONGED_DEVIATION\" then \"Inclinazione troppo lunga\" else if r.code == \"POSTURE_OK\" then \"Postura ristabilita\" else if r.code == \"DATA_STREAM_STALE\" then \"Nessun dato dalla maglia\" else if r.code == \"DATA_STREAM_RESTORED\" then \"Trasmissione ripresa\" else if r.code == \"BATTERY_CRITICAL\" then \"Batteria critica (≤10%)\" else if r.code == \"BATTERY_LOW\" then \"Batteria bassa (≤20%)\" else if r.code == \"BATTERY_RECOVERED\" then \"Batteria recuperata (>20%)\" else if r.code == \"ACC_SEQUENCE_GAP\" then \"Pacchetti saltati\" else if r.code == \"DATA_LOSS\" then \"Perdita dichiarata dalla maglia\" else \"Errore non classificato\", message: if r.code == \"POSTURE_MARKED_DEVIATION\" then \"Superata la soglia di inclinazione elevata\" else if r.code == \"POSTURE_PROLONGED_DEVIATION\" then \"Inclinazione mantenuta oltre il tempo consentito\" else if r.code == \"POSTURE_OK\" then \"Postura tornata entro i limiti\" else if r.code == \"DATA_STREAM_STALE\" then \"La maglia ha interrotto la trasmissione\" else if r.code == \"DATA_STREAM_RESTORED\" then \"La maglia ha ripreso a trasmettere\" else if r.code == \"BATTERY_CRITICAL\" then \"Carica residua pari o inferiore al 10%\" else if r.code == \"BATTERY_LOW\" then \"Carica residua tra 11% e 20%\" else if r.code == \"BATTERY_RECOVERED\" then \"Carica nuovamente superiore al 20%\" else if r.code == \"ACC_SEQUENCE_GAP\" then \"Rilevato un salto nella sequenza dei pacchetti\" else if r.code == \"DATA_LOSS\" then \"La maglia ha segnalato una perdita di dati\" else if strings.strlen(v: r.message) > 70 then strings.substring(v: r.message, start: 0, end: 70) + \"…\" else r.message}))  |> keep(columns: [\"_time\", \"alert_name\", \"active\", \"message\"]) |> group() |> sort(columns: [\"_time\"], desc: true) |> limit(n: 100)",
+          "refId": "A"
+        }
+      ],
+      "title": "Alert della sessione selezionata",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "_measurement": true,
+              "_start": true,
+              "_stop": true,
+              "device_id": true,
+              "patient_id": true,
+              "result": true,
+              "severity": true,
+              "session_id": true,
+              "table": true
+            },
+            "indexByName": {
+              "_time": 0,
+              "alert_name": 1,
+              "active": 2,
+              "message": 3
+            },
+            "renameByName": {
+              "_time": "Ora",
+              "active": "Stato",
+              "alert_name": "Tipo alert",
+              "message": "Messaggio"
+            }
+          }
+        }
+      ],
       "type": "table"
     }
   ],
   "refresh": "30s",
   "schemaVersion": 41,
-  "tags": ["smartback", "medico", "storico"],
+  "tags": [
+    "smartback",
+    "medico",
+    "storico"
+  ],
   "templating": {
     "list": [
       {
         "current": {},
-        "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+        "datasource": {
+          "type": "influxdb",
+          "uid": "smartback-influx"
+        },
         "definition": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"posture\", tag: \"patient_id\", predicate: (r) => r._measurement == \"posture\", start: 0)",
         "hide": 2,
         "includeAll": false,
@@ -175,13 +703,94 @@
         "skipUrlSync": false,
         "sort": 1,
         "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "__none__",
+          "value": "__none__"
+        },
+        "hide": 2,
+        "label": "Sessione diurna",
+        "name": "session_id",
+        "options": [
+          {
+            "selected": true,
+            "text": "__none__",
+            "value": "__none__"
+          }
+        ],
+        "query": "__none__",
+        "skipUrlSync": false,
+        "type": "textbox"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "1970-01-01T00:00:00Z",
+          "value": "1970-01-01T00:00:00Z"
+        },
+        "hide": 2,
+        "label": "Inizio sessione",
+        "name": "alert_day_start",
+        "options": [
+          {
+            "selected": true,
+            "text": "1970-01-01T00:00:00Z",
+            "value": "1970-01-01T00:00:00Z"
+          }
+        ],
+        "query": "1970-01-01T00:00:00Z",
+        "skipUrlSync": false,
+        "type": "textbox"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "1970-01-02T00:00:00Z",
+          "value": "1970-01-02T00:00:00Z"
+        },
+        "hide": 2,
+        "label": "Fine sessione",
+        "name": "alert_day_stop",
+        "options": [
+          {
+            "selected": true,
+            "text": "1970-01-02T00:00:00Z",
+            "value": "1970-01-02T00:00:00Z"
+          }
+        ],
+        "query": "1970-01-02T00:00:00Z",
+        "skipUrlSync": false,
+        "type": "textbox"
       }
     ]
   },
-  "time": {"from": "now-15m", "to": "now"},
-  "timepicker": {"refresh_intervals": ["30s", "1m", "5m", "15m"], "time_options": ["15m", "30m", "1h", "6h", "12h", "24h", "2d", "7d", "30d"]},
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "30s",
+      "1m",
+      "5m",
+      "15m"
+    ],
+    "time_options": [
+      "15m",
+      "30m",
+      "1h",
+      "6h",
+      "12h",
+      "24h",
+      "2d",
+      "7d",
+      "30d"
+    ]
+  },
   "timezone": "browser",
   "title": "SmartBack - Storico paziente",
   "uid": "smartback-history",
-  "version": 10
+  "version": 14
 }

@@ -5,82 +5,90 @@
   "graphTooltip": 1,
   "id": null,
   "links": [
-    {"asDropdown": false, "icon": "home-alt", "includeVars": false, "keepTime": false, "tags": [], "targetBlank": false, "title": "HOME", "tooltip": "Torna alla Home", "type": "link", "url": "/smartback/"},
-    {"asDropdown": false, "icon": "dashboard", "includeVars": true, "keepTime": false, "tags": [], "targetBlank": false, "title": "MONITORAGGIO DIURNO", "tooltip": "Apri il monitoraggio diurno", "type": "link", "url": "/grafana/d/smartback-overview/smartback-monitoraggio-paziente?refresh=1s"},
-    {"asDropdown": false, "icon": "history", "includeVars": true, "keepTime": false, "tags": [], "targetBlank": false, "title": "STORICO DIURNO", "tooltip": "Apri lo storico diurno", "type": "link", "url": "/grafana/d/smartback-history/smartback-storico-paziente"},
-    {"asDropdown": false, "icon": "moon", "includeVars": true, "keepTime": false, "tags": [], "targetBlank": false, "title": "MONITORAGGIO NOTTURNO", "tooltip": "Apri il monitoraggio notturno", "type": "link", "url": "/grafana/d/smartback-night/smartback-monitoraggio-notturno?refresh=1s"}
+    {"asDropdown": false, "icon": "home-alt", "includeVars": false, "keepTime": false, "tags": [], "targetBlank": false, "title": "HOME", "tooltip": "Torna alla lista dei pazienti", "type": "link", "url": "/smartback/"},
+    {"asDropdown": false, "icon": "sun", "includeVars": true, "keepTime": false, "tags": [], "targetBlank": false, "title": "DIURNO", "tooltip": "Monitoraggio diurno corrente", "type": "link", "url": "/grafana/d/smartback-overview/smartback-monitoraggio-paziente?refresh=1s"},
+    {"asDropdown": false, "icon": "history", "includeVars": true, "keepTime": false, "tags": [], "targetBlank": false, "title": "STORICO D", "tooltip": "Apri lo storico diurno", "type": "link", "url": "/grafana/d/smartback-history/smartback-storico-paziente"},
+    {"asDropdown": false, "icon": "moon", "includeVars": true, "keepTime": false, "tags": [], "targetBlank": false, "title": "NOTTURNO", "tooltip": "Apri il monitoraggio notturno", "type": "link", "url": "/grafana/d/smartback-night/smartback-monitoraggio-notturno?refresh=1s"},
+    {"asDropdown": false, "icon": "history", "includeVars": true, "keepTime": false, "tags": [], "targetBlank": false, "title": "STORICO N", "tooltip": "Schermata attuale: storico notturno", "type": "link", "url": "/grafana/d/smartback-night-history/smartback-storico-notturno"}
   ],
   "liveNow": false,
   "panels": [
     {
       "datasource": {"type": "influxdb", "uid": "smartback-influx"},
-      "description": "Tempo rilevato in posizione supina nell'intervallo selezionato.",
+      "description": "Tempo rilevato in posizione supina nella sessione selezionata.",
       "fieldConfig": {"defaults": {"color": {"fixedColor": "#3ec6ae", "mode": "fixed"}, "decimals": 0, "noValue": "0 s", "unit": "s"}, "overrides": []},
       "gridPos": {"h": 4, "w": 6, "x": 0, "y": 0}, "id": 1,
       "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"confidence\" and r.patient_id == \"${patient_id}\" and r.position == \"supine\" and r.session_id =~ /^${session_id:regex}$/) |> group(columns: [\"session_id\"]) |> elapsed(unit: 1s) |> filter(fn: (r) => r.elapsed >= 0 and r.elapsed <= 10) |> group(columns: []) |> sum(column: \"elapsed\") |> map(fn: (r) => ({_time: r._time, _value: float(v: r.elapsed)}))", "refId": "A"}],
+      "targets": [{"query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"confidence\" and r.patient_id == \"${patient_id}\" and r.position == \"supine\" and r.session_id == \"${session_id}\") |> group(columns: [\"session_id\"]) |> elapsed(unit: 1ms) |> filter(fn: (r) => r.elapsed >= 0 and r.elapsed <= 10000) |> group(columns: []) |> sum(column: \"elapsed\") |> map(fn: (r) => ({_time: r._time, _value: float(v: r.elapsed) / 1000.0}))", "refId": "A"}],
       "title": "Tempo supino", "type": "stat"
     },
     {
       "datasource": {"type": "influxdb", "uid": "smartback-influx"},
-      "description": "Tempo rilevato in posizione prona nell'intervallo selezionato.",
+      "description": "Tempo rilevato in posizione prona nella sessione selezionata.",
       "fieldConfig": {"defaults": {"color": {"fixedColor": "#ef8354", "mode": "fixed"}, "decimals": 0, "noValue": "0 s", "unit": "s"}, "overrides": []},
       "gridPos": {"h": 4, "w": 6, "x": 6, "y": 0}, "id": 2,
       "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"confidence\" and r.patient_id == \"${patient_id}\" and r.position == \"prone\" and r.session_id =~ /^${session_id:regex}$/) |> group(columns: [\"session_id\"]) |> elapsed(unit: 1s) |> filter(fn: (r) => r.elapsed >= 0 and r.elapsed <= 10) |> group(columns: []) |> sum(column: \"elapsed\") |> map(fn: (r) => ({_time: r._time, _value: float(v: r.elapsed)}))", "refId": "A"}],
+      "targets": [{"query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"confidence\" and r.patient_id == \"${patient_id}\" and r.position == \"prone\" and r.session_id == \"${session_id}\") |> group(columns: [\"session_id\"]) |> elapsed(unit: 1ms) |> filter(fn: (r) => r.elapsed >= 0 and r.elapsed <= 10000) |> group(columns: []) |> sum(column: \"elapsed\") |> map(fn: (r) => ({_time: r._time, _value: float(v: r.elapsed) / 1000.0}))", "refId": "A"}],
       "title": "Tempo prono", "type": "stat"
     },
     {
       "datasource": {"type": "influxdb", "uid": "smartback-influx"},
-      "description": "Tempo rilevato sul fianco destro nell'intervallo selezionato.",
+      "description": "Tempo rilevato sul fianco destro nella sessione selezionata.",
       "fieldConfig": {"defaults": {"color": {"fixedColor": "#6f9ceb", "mode": "fixed"}, "decimals": 0, "noValue": "0 s", "unit": "s"}, "overrides": []},
       "gridPos": {"h": 4, "w": 6, "x": 12, "y": 0}, "id": 3,
       "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"confidence\" and r.patient_id == \"${patient_id}\" and r.position == \"right_side\" and r.session_id =~ /^${session_id:regex}$/) |> group(columns: [\"session_id\"]) |> elapsed(unit: 1s) |> filter(fn: (r) => r.elapsed >= 0 and r.elapsed <= 10) |> group(columns: []) |> sum(column: \"elapsed\") |> map(fn: (r) => ({_time: r._time, _value: float(v: r.elapsed)}))", "refId": "A"}],
+      "targets": [{"query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"confidence\" and r.patient_id == \"${patient_id}\" and r.position == \"right_side\" and r.session_id == \"${session_id}\") |> group(columns: [\"session_id\"]) |> elapsed(unit: 1ms) |> filter(fn: (r) => r.elapsed >= 0 and r.elapsed <= 10000) |> group(columns: []) |> sum(column: \"elapsed\") |> map(fn: (r) => ({_time: r._time, _value: float(v: r.elapsed) / 1000.0}))", "refId": "A"}],
       "title": "Tempo lato destro", "type": "stat"
     },
     {
       "datasource": {"type": "influxdb", "uid": "smartback-influx"},
-      "description": "Tempo rilevato sul fianco sinistro nell'intervallo selezionato.",
+      "description": "Tempo rilevato sul fianco sinistro nella sessione selezionata.",
       "fieldConfig": {"defaults": {"color": {"fixedColor": "#b18be8", "mode": "fixed"}, "decimals": 0, "noValue": "0 s", "unit": "s"}, "overrides": []},
       "gridPos": {"h": 4, "w": 6, "x": 18, "y": 0}, "id": 4,
       "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"confidence\" and r.patient_id == \"${patient_id}\" and r.position == \"left_side\" and r.session_id =~ /^${session_id:regex}$/) |> group(columns: [\"session_id\"]) |> elapsed(unit: 1s) |> filter(fn: (r) => r.elapsed >= 0 and r.elapsed <= 10) |> group(columns: []) |> sum(column: \"elapsed\") |> map(fn: (r) => ({_time: r._time, _value: float(v: r.elapsed)}))", "refId": "A"}],
+      "targets": [{"query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"confidence\" and r.patient_id == \"${patient_id}\" and r.position == \"left_side\" and r.session_id == \"${session_id}\") |> group(columns: [\"session_id\"]) |> elapsed(unit: 1ms) |> filter(fn: (r) => r.elapsed >= 0 and r.elapsed <= 10000) |> group(columns: []) |> sum(column: \"elapsed\") |> map(fn: (r) => ({_time: r._time, _value: float(v: r.elapsed) / 1000.0}))", "refId": "A"}],
       "title": "Tempo lato sinistro", "type": "stat"
     },
     {
       "datasource": {"type": "influxdb", "uid": "smartback-influx"},
-      "description": "Cronologia unificata delle posizioni: consente di leggere direttamente ogni cambio durante la notte.",
-      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "custom": {"fillOpacity": 75, "lineWidth": 1, "spanNulls": false}, "mappings": [{"options": {"0": {"color": "#8da39d", "text": "Transizione"}, "1": {"color": "#3ec6ae", "text": "Supino"}, "2": {"color": "#ef8354", "text": "Prono"}, "3": {"color": "#6f9ceb", "text": "Decubito destro"}, "4": {"color": "#b18be8", "text": "Decubito sinistro"}}, "type": "value"}], "thresholds": {"mode": "absolute", "steps": [{"color": "#8da39d", "value": null}]}}, "overrides": []},
-      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 4}, "id": 5,
-      "options": {"alignValue": "left", "legend": {"displayMode": "hidden", "placement": "bottom", "showLegend": false}, "mergeValues": true, "rowHeight": 0.8, "showValue": "never", "tooltip": {"mode": "single", "sort": "none"}},
+      "description": "Percentuale del tempo classificato trascorsa in ciascuna posizione nella sessione selezionata.",
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "palette-classic"}, "decimals": 1, "max": 100, "min": 0, "unit": "percent"},
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "Supino"}, "properties": [{"id": "color", "value": {"fixedColor": "#3ec6ae", "mode": "fixed"}}]},
+          {"matcher": {"id": "byName", "options": "Prono"}, "properties": [{"id": "color", "value": {"fixedColor": "#ef8354", "mode": "fixed"}}]},
+          {"matcher": {"id": "byName", "options": "Decubito destro"}, "properties": [{"id": "color", "value": {"fixedColor": "#6f9ceb", "mode": "fixed"}}]},
+          {"matcher": {"id": "byName", "options": "Decubito sinistro"}, "properties": [{"id": "color", "value": {"fixedColor": "#b18be8", "mode": "fixed"}}]}
+        ]
+      },
+      "gridPos": {"h": 10, "w": 19, "x": 0, "y": 4}, "id": 5,
+      "options": {"barRadius": 0, "barWidth": 0.7, "fullHighlight": false, "groupWidth": 0.7, "legend": {"calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true}, "orientation": "vertical", "showValue": "always", "stacking": "none", "tooltip": {"hideZeros": false, "mode": "single", "sort": "none"}, "xField": "Nome", "xTickLabelMaxLength": 24, "xTickLabelRotation": 0, "xTickLabelSpacing": 0},
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\" and r.session_id =~ /^${session_id:regex}$/) |> group(columns: [\"session_id\"]) |> sort(columns: [\"_time\"])", "refId": "A"}],
-      "title": "Storico delle posizioni notturne", "type": "state-timeline"
+      "targets": [{"query": "import \"array\"\nd = from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"confidence\" and r.patient_id == \"${patient_id}\" and r.session_id == \"${session_id}\") |> group(columns: [\"position\"]) |> elapsed(unit: 1ms) |> filter(fn: (r) => r.elapsed >= 0 and r.elapsed <= 10000) |> group(columns: [\"position\"]) |> sum(column: \"elapsed\")\nget = (position) => union(tables: [array.from(rows: [{_value: 0.0}]), d |> filter(fn: (r) => r.position == position) |> map(fn: (r) => ({_value: float(v: r.elapsed)}))]) |> group() |> sum(column: \"_value\") |> findRecord(fn: (key) => true, idx: 0)\ns = get(position: \"supine\")\np = get(position: \"prone\")\nr = get(position: \"right_side\")\nl = get(position: \"left_side\")\nt = s._value + p._value + r._value + l._value\narray.from(rows: [{Nome: \"Posizioni\", Supino: if t > 0.0 then s._value / t * 100.0 else 0.0, Prono: if t > 0.0 then p._value / t * 100.0 else 0.0, \"Decubito destro\": if t > 0.0 then r._value / t * 100.0 else 0.0, \"Decubito sinistro\": if t > 0.0 then l._value / t * 100.0 else 0.0}])", "refId": "A"}],
+      "title": "Percentuale del tempo per posizione", "type": "barchart"
     },
     {
       "datasource": {"type": "influxdb", "uid": "smartback-influx"},
-      "description": "Riepilogo percentuale delle posizioni nell'intervallo selezionato.",
-      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "decimals": 0, "unit": "s"}, "overrides": [{"matcher": {"id": "byRegexp", "options": ".*supine.*"}, "properties": [{"id": "color", "value": {"fixedColor": "#3ec6ae", "mode": "fixed"}}]}, {"matcher": {"id": "byRegexp", "options": ".*prone.*"}, "properties": [{"id": "color", "value": {"fixedColor": "#ef8354", "mode": "fixed"}}]}, {"matcher": {"id": "byRegexp", "options": ".*right_side.*"}, "properties": [{"id": "color", "value": {"fixedColor": "#6f9ceb", "mode": "fixed"}}]}, {"matcher": {"id": "byRegexp", "options": ".*left_side.*"}, "properties": [{"id": "color", "value": {"fixedColor": "#b18be8", "mode": "fixed"}}]}, {"matcher": {"id": "byRegexp", "options": ".*unknown.*"}, "properties": [{"id": "color", "value": {"fixedColor": "#8da39d", "mode": "fixed"}}]}]},
-      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 14}, "id": 6,
-      "options": {"displayLabels": ["name", "percent"], "legend": {"displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"]}, "pieType": "donut", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "tooltip": {"hideZeros": false, "mode": "single", "sort": "none"}},
-      "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"confidence\" and r.patient_id == \"${patient_id}\" and r.session_id =~ /^${session_id:regex}$/) |> group(columns: [\"session_id\", \"position\"]) |> elapsed(unit: 1s) |> filter(fn: (r) => r.elapsed >= 0 and r.elapsed <= 10) |> group(columns: [\"position\"]) |> sum(column: \"elapsed\") |> map(fn: (r) => ({_time: r._time, _value: float(v: r.elapsed), position: r.position}))", "refId": "A"}],
-      "title": "Distribuzione delle posizioni", "type": "piechart"
-    },
-    {
-      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
-      "description": "Tratti non classificabili con sufficiente certezza, utili per valutare qualita e transizioni.",
+      "description": "Tempo della sessione non classificato con sufficiente certezza.",
       "fieldConfig": {"defaults": {"color": {"fixedColor": "#8da39d", "mode": "fixed"}, "decimals": 0, "noValue": "0 s", "unit": "s"}, "overrides": []},
-      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 14}, "id": 7,
-      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
+      "gridPos": {"h": 10, "w": 5, "x": 19, "y": 4}, "id": 6,
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "vertical", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"confidence\" and r.patient_id == \"${patient_id}\" and r.position == \"unknown\" and r.session_id =~ /^${session_id:regex}$/) |> group(columns: [\"session_id\"]) |> elapsed(unit: 1s) |> filter(fn: (r) => r.elapsed >= 0 and r.elapsed <= 10) |> group(columns: []) |> sum(column: \"elapsed\") |> map(fn: (r) => ({_time: r._time, _value: float(v: r.elapsed)}))", "refId": "A"}],
-      "title": "Tempo non classificato", "type": "stat"
+      "targets": [{"query": "from(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"confidence\" and r.patient_id == \"${patient_id}\" and r.position == \"unknown\" and r.session_id == \"${session_id}\") |> group(columns: [\"session_id\"]) |> elapsed(unit: 1ms) |> filter(fn: (r) => r.elapsed >= 0 and r.elapsed <= 10000) |> group(columns: []) |> sum(column: \"elapsed\") |> map(fn: (r) => ({_time: r._time, _value: float(v: r.elapsed) / 1000.0}))", "refId": "A"}],
+      "title": "Tempo in transizione", "type": "stat"
+    },
+    {
+      "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+      "description": "Cerca e seleziona una sessione notturna per data o ora. Tutti i pannelli vengono aggiornati sulla sessione scelta.",
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 6, "w": 24, "x": 0, "y": 14}, "id": 7,
+      "options": {"code": {"language": "plaintext", "showLineNumbers": false, "showMiniMap": false}, "content": "<iframe src=\"/api/v1/grafana/patients/${patient_id}/night-session-control?session_id=${session_id}\" style=\"width:100%;height:100%;min-height:175px;border:0;background:transparent\" title=\"Selezione sessione notturna\"></iframe>", "mode": "html"},
+      "pluginVersion": "12.0.2",
+      "title": "Storico per sessioni", "transparent": true, "type": "text"
     }
   ],
   "refresh": "",
@@ -88,12 +96,12 @@
   "tags": ["smartback", "night-monitoring", "history", "medical"],
   "templating": {"list": [
     {"current": {}, "datasource": {"type": "influxdb", "uid": "smartback-influx"}, "definition": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"posture\", tag: \"patient_id\", predicate: (r) => r._measurement == \"night_position\", start: 0)", "hide": 0, "includeAll": false, "label": "Paziente monitorato", "multi": false, "name": "patient_id", "options": [], "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"posture\", tag: \"patient_id\", predicate: (r) => r._measurement == \"night_position\", start: 0)", "refresh": 1, "regex": "", "skipUrlSync": false, "sort": 1, "type": "query"},
-    {"allValue": ".*", "current": {}, "datasource": {"type": "influxdb", "uid": "smartback-influx"}, "definition": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"posture\", tag: \"session_id\", predicate: (r) => r._measurement == \"night_position\" and r.patient_id == \"${patient_id}\", start: 0)", "hide": 0, "includeAll": true, "label": "Sessione notturna", "multi": false, "name": "session_id", "options": [], "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"posture\", tag: \"session_id\", predicate: (r) => r._measurement == \"night_position\" and r.patient_id == \"${patient_id}\", start: 0)", "refresh": 1, "regex": "", "skipUrlSync": false, "sort": 2, "type": "query"}
+    {"current": {}, "datasource": {"type": "influxdb", "uid": "smartback-influx"}, "definition": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"posture\", tag: \"session_id\", predicate: (r) => r._measurement == \"night_position\" and r.patient_id == \"${patient_id}\", start: 0)", "hide": 2, "includeAll": false, "label": "Sessione notturna", "multi": false, "name": "session_id", "options": [], "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"posture\", tag: \"session_id\", predicate: (r) => r._measurement == \"night_position\" and r.patient_id == \"${patient_id}\", start: 0)", "refresh": 1, "regex": "", "skipUrlSync": false, "sort": 2, "type": "query"}
   ]},
   "time": {"from": "now-7d", "to": "now"},
   "timepicker": {"refresh_intervals": ["5s", "10s", "30s", "1m"], "time_options": ["12h", "24h", "7d", "30d", "90d", "1y"]},
   "timezone": "browser",
   "title": "SmartBack - Storico notturno",
   "uid": "smartback-night-history",
-  "version": 1
+  "version": 2
 }

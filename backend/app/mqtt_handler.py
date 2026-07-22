@@ -19,6 +19,7 @@ BroadcastCallback = Callable[[dict[str, Any]], Awaitable[None]]
 DeviceSeenCallback = Callable[[str, str], None]
 AssignmentProvider = Callable[[], list[dict[str, str]]]
 SimulatedDeviceProvider = Callable[[], list[str]]
+ActiveNightSimulationProvider = Callable[[], list[str]]
 
 
 class SmartBackMqttHandler:
@@ -37,6 +38,7 @@ class SmartBackMqttHandler:
         device_seen: DeviceSeenCallback | None = None,
         assignment_provider: AssignmentProvider | None = None,
         simulated_device_provider: SimulatedDeviceProvider | None = None,
+        active_night_simulation_provider: ActiveNightSimulationProvider | None = None,
         night_engine: NightPositionEngine | None = None,
     ) -> None:
         self.host = host
@@ -51,6 +53,7 @@ class SmartBackMqttHandler:
         self.device_seen = device_seen
         self.assignment_provider = assignment_provider
         self.simulated_device_provider = simulated_device_provider
+        self.active_night_simulation_provider = active_night_simulation_provider
         self.night_engine = night_engine
 
         self._lock = threading.RLock()
@@ -64,6 +67,7 @@ class SmartBackMqttHandler:
         self._device_patient: dict[str, str] = {}
         self._monitoring_session: dict[str, str] = {}
         self._stale_alerted: set[str] = set()
+        self._last_raw_device_seen: dict[str, float] = {}
 
     @property
     def latest_posture(self) -> dict[str, Any] | None:
@@ -124,7 +128,13 @@ class SmartBackMqttHandler:
         properties: Any,
     ) -> None:
         if reason_code == 0:
-            client.subscribe([(self.posture_topic, 1), (self.device_topic, 1)])
+            client.subscribe(
+                [
+                    (self.posture_topic, 1),
+                    (self.device_topic, 1),
+                    ("unisadiem/smartshirt/+/+", 0),
+                ]
+            )
             if self.assignment_provider:
                 for assignment in self.assignment_provider():
                     self.publish_device_assignment(
@@ -133,8 +143,12 @@ class SmartBackMqttHandler:
             if self.simulated_device_provider:
                 for device_id in self.simulated_device_provider():
                     self.publish_simulated_device(device_id, active=True)
+            if self.active_night_simulation_provider:
+                for device_id in self.active_night_simulation_provider():
+                    self.publish_simulation_scenario(device_id, "night-cycle")
             print(
-                f"MQTT connected; subscribed to {self.posture_topic} and {self.device_topic}",
+                f"MQTT connected; subscribed to {self.posture_topic}, "
+                f"{self.device_topic} and smart-shirt discovery",
                 flush=True,
             )
         else:
@@ -181,6 +195,24 @@ class SmartBackMqttHandler:
 
     def _on_message(self, client: mqtt.Client, userdata: Any, message: mqtt.MQTTMessage) -> None:
         try:
+            topic_parts = message.topic.split("/")
+            if (
+                len(topic_parts) >= 4
+                and topic_parts[0] == "unisadiem"
+                and topic_parts[1] == "smartshirt"
+            ):
+                # Discovery is intentionally independent from posture ingestion:
+                # even packets we do not process (for example ECG and strain
+                # gauges) prove that the physical shirt is online. Throttle the
+                # durable update because those streams can be very frequent.
+                device_id = topic_parts[2].strip()
+                now = time.monotonic()
+                last_seen = self._last_raw_device_seen.get(device_id, 0.0)
+                if device_id and self.device_seen and now - last_seen >= 5.0:
+                    self._last_raw_device_seen[device_id] = now
+                    self.device_seen(device_id, "measured")
+                return
+
             raw_payload = json.loads(message.payload.decode("utf-8"))
             if message.topic == self.posture_topic:
                 payload = NormalizedPostureSample.model_validate(raw_payload).model_dump()
@@ -203,6 +235,10 @@ class SmartBackMqttHandler:
                         )
                 else:
                     processed = self.posture_engine.process(payload)
+                    with self._lock:
+                        processed["session_id"] = self._monitoring_session[
+                            str(payload["device_id"])
+                        ]
                     self.influx.persist_posture(processed)
                     self._publish_posture_transition(client, processed)
                     with self._lock:
@@ -260,6 +296,7 @@ class SmartBackMqttHandler:
         previous_alert = self._last_posture_alert.get(device_id)
         if current_alert == previous_alert:
             return
+        episode_started = current_alert is not None and previous_alert is None
         payload = {
             "schema_version": 1,
             "timestamp": int(processed["timestamp"]),
@@ -269,13 +306,14 @@ class SmartBackMqttHandler:
             "severity": "critical" if current_alert == "POSTURE_MARKED_DEVIATION" else "warning",
             "code": current_alert or previous_alert or "POSTURE_OK",
             "message": (
-                "Deviazione posturale marcata"
+                "Superata la soglia di inclinazione elevata"
                 if current_alert == "POSTURE_MARKED_DEVIATION"
-                else "Deviazione posturale prolungata"
+                else "Inclinazione mantenuta oltre il tempo consentito"
                 if current_alert == "POSTURE_PROLONGED_DEVIATION"
-                else "Postura rientrata nei limiti"
+                else "Postura tornata entro i limiti"
             ),
             "active": current_alert is not None,
+            "episode_started": episode_started,
             "deviation_deg": processed["deviation_deg"],
             "pitch_deviation_deg": processed["pitch_deviation_deg"],
             "roll_deviation_deg": processed["roll_deviation_deg"],
@@ -304,9 +342,9 @@ class SmartBackMqttHandler:
             "severity": "critical" if active else "info",
             "code": "DATA_STREAM_STALE" if active else "DATA_STREAM_RESTORED",
             "message": (
-                f"Nessun dato posturale ricevuto da {silent_seconds:.1f} secondi"
+                f"La maglia non trasmette dati da {silent_seconds:.1f} secondi"
                 if active
-                else "Flusso dati posturali ripristinato"
+                else "La maglia ha ripreso a trasmettere"
             ),
             "active": active,
             "silent_seconds": round(silent_seconds, 1),

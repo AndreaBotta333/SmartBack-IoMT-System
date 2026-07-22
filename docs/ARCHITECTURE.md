@@ -50,8 +50,9 @@ privi di identificativo sono conservati come `Sessione precedente`.
 
 ## Monitoraggio notturno
 
-Il paziente attiva esplicitamente la modalita notturna; il medico puo
-consultarne le sessioni e i riepiloghi ma non controllarne l'avvio. SQLite
+Il paziente dall'app o il medico associato dalla dashboard possono attivare
+esplicitamente la modalita notturna. Entrambi possono arrestarla, mentre il
+medico puo inoltre consultarne sessioni e riepiloghi. SQLite
 conserva identita, maglia usata, stato e riepilogo di ogni sessione. InfluxDB
 ospitera la serie temporale delle posizioni `supino`, `prono`, `decubito
 destro`, `decubito sinistro` e `sconosciuto`.
@@ -62,7 +63,7 @@ endpoint sono descritti in `docs/NIGHT_MONITORING.md`.
 
 Grafana espone una dashboard medica notturna separata, filtrabile per paziente
 e sessione. Legge la measurement InfluxDB `night_position`; l'attivazione della
-modalita resta invece responsabilita esclusiva del paziente tramite API/app.
+modalita e condivisa tra app del paziente e controllo medico autenticato.
 
 ## Portale medico e assegnazione delle magliette
 
@@ -71,6 +72,25 @@ e mostra solo i pazienti presenti in `doctor_patients`, oltre all'inventario
 `devices`. Ogni legame maglia-paziente produce una nuova riga in
 `device_assignments`: quando la maglia viene liberata la riga riceve
 `released_at`, senza essere cancellata.
+
+Ogni maglia appartiene all'inventario di un solo medico tramite
+`devices.owner_doctor_id`. `doctor_device_number` è un identificativo interno
+progressivo, parte da `0` ed è indipendente per ciascun medico; non viene mai
+inserito manualmente. Il `device_id` tecnico di una maglia reale (per esempio
+`tshirt002`) viene acquisito automaticamente dalla telemetria MQTT: finché non
+ha proprietario compare tra le maglie rilevate disponibili e il medico deve
+confermarne esplicitamente l'acquisizione. Per le maglie di test, FastAPI genera
+invece un codice tecnico univoco e configura il simulatore senza richiedere un
+codice al medico. Le API della Home, di assegnazione, rilascio e rimozione
+filtrano sempre per il proprietario.
+
+Il medico può creare dalla Home un profilo clinico usando soltanto il codice
+fiscale, anche se il paziente non ha ancora un account. Il profilo nasce con
+`account_registered=0` e può ricevere immediatamente una maglia, sessioni e
+telemetria. Quando il paziente si registra dall'app con lo stesso codice
+fiscale, FastAPI completa quel medesimo record (`account_registered=1`) con
+nome, cognome, email e credenziali: `id`, `patient_code`, assegnazioni e storico
+non cambiano.
 
 FastAPI pubblica le assegnazioni attive come configurazioni MQTT retained su
 `smartback/config/device-assignments/<device_id>`. Node-RED usa questa mappa per

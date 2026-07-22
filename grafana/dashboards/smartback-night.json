@@ -5,60 +5,123 @@
   "graphTooltip": 1,
   "id": null,
   "links": [
-    {"asDropdown": false, "icon": "home-alt", "includeVars": false, "keepTime": false, "tags": [], "targetBlank": false, "title": "HOME", "tooltip": "Torna alla Home", "type": "link", "url": "/smartback/"},
-    {"asDropdown": false, "icon": "dashboard", "includeVars": true, "keepTime": false, "tags": [], "targetBlank": false, "title": "MONITORAGGIO DIURNO", "tooltip": "Apri il monitoraggio posturale diurno", "type": "link", "url": "/grafana/d/smartback-overview/smartback-monitoraggio-paziente?refresh=1s"},
-    {"asDropdown": false, "icon": "history", "includeVars": true, "keepTime": false, "tags": [], "targetBlank": false, "title": "STORICO DIURNO", "tooltip": "Apri lo storico posturale diurno", "type": "link", "url": "/grafana/d/smartback-history/smartback-storico-paziente"},
-    {"asDropdown": false, "icon": "history", "includeVars": true, "keepTime": false, "tags": [], "targetBlank": false, "title": "STORICO NOTTURNO", "tooltip": "Apri lo storico delle sessioni notturne", "type": "link", "url": "/grafana/d/smartback-night-history/smartback-storico-notturno"}
+    {"asDropdown": false, "icon": "home-alt", "includeVars": false, "keepTime": false, "tags": [], "targetBlank": false, "title": "HOME", "tooltip": "Torna alla lista dei pazienti", "type": "link", "url": "/smartback/"},
+    {"asDropdown": false, "icon": "sun", "includeVars": true, "keepTime": false, "tags": [], "targetBlank": false, "title": "DIURNO", "tooltip": "Monitoraggio diurno corrente", "type": "link", "url": "/grafana/d/smartback-overview/smartback-monitoraggio-paziente?refresh=1s"},
+    {"asDropdown": false, "icon": "history", "includeVars": true, "keepTime": false, "tags": [], "targetBlank": false, "title": "STORICO D", "tooltip": "Apri lo storico diurno", "type": "link", "url": "/grafana/d/smartback-history/smartback-storico-paziente"},
+    {"asDropdown": false, "icon": "moon", "includeVars": true, "keepTime": false, "tags": [], "targetBlank": false, "title": "NOTTURNO", "tooltip": "Schermata attuale: monitoraggio notturno", "type": "link", "url": "/grafana/d/smartback-night/smartback-monitoraggio-notturno?refresh=1s"},
+    {"asDropdown": false, "icon": "history", "includeVars": true, "keepTime": false, "tags": [], "targetBlank": false, "title": "STORICO N", "tooltip": "Apri lo storico notturno", "type": "link", "url": "/grafana/d/smartback-night-history/smartback-storico-notturno"}
   ],
   "liveNow": false,
   "panels": [
     {
       "datasource": {"type": "influxdb", "uid": "smartback-influx"},
-      "description": "Ultima posizione notturna stabilizzata nella sessione selezionata.",
-      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [{"options": {"0": {"color": "#8da39d", "text": "Transizione"}, "1": {"color": "#3ec6ae", "text": "Supino"}, "2": {"color": "#ef8354", "text": "Prono"}, "3": {"color": "#6f9ceb", "text": "Decubito destro"}, "4": {"color": "#b18be8", "text": "Decubito sinistro"}}, "type": "value"}], "noValue": "Nessun dato", "thresholds": {"mode": "absolute", "steps": [{"color": "#8da39d", "value": null}]}}, "overrides": []},
-      "gridPos": {"h": 4, "w": 12, "x": 0, "y": 0},
+      "description": "Indica se il monitoraggio notturno del paziente è attivo.",
+      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "mappings": [{"options": {"0": {"color": "red", "index": 0, "text": "OFF"}, "1": {"color": "green", "index": 1, "text": "ON"}}, "type": "value"}], "noValue": "OFF", "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}, "overrides": []},
+      "gridPos": {"h": 4, "w": 8, "x": 0, "y": 0},
+      "id": 6,
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
+      "pluginVersion": "12.0.2",
+      "targets": [{"query": "import \"array\"\nstate = from(bucket: \"posture\") |> range(start: -24h) |> filter(fn: (r) => r._measurement == \"night_session_state\" and r._field == \"active\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> map(fn: (r) => ({_time: now(), _field: \"monitoraggio\", _value: r._value}))\nbaseline = array.from(rows: [{_time: now(), _field: \"monitoraggio\", _value: 0}])\nunion(tables: [baseline, state]) |> group(columns: []) |> max(column: \"_value\")", "refId": "A"}],
+      "title": "Monitoraggio",
+      "type": "stat"
+    },
+    {
+      "gridPos": {"h": 4, "w": 16, "x": 8, "y": 0},
+      "id": 15,
+      "options": {
+        "code": {"language": "plaintext", "showLineNumbers": false, "showMiniMap": false},
+        "content": "<iframe src=\"/api/v1/grafana/patients/${patient_id}/night-monitoring/control\" title=\"Gestione modalità notte\" style=\"display:block;width:100%;height:100%;min-height:86px;border:0;background:#181b1f\"></iframe>",
+        "mode": "html"
+      },
+      "pluginVersion": "12.0.2",
+      "title": "Gestione modalità notte",
+      "transparent": true,
+      "type": "text"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+      "description": "Ultima posizione notturna stabilizzata nella sessione corrente.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "mappings": [{"options": {"0": {"color": "#8da39d", "text": "Transizione"}, "1": {"color": "#3ec6ae", "text": "Supino"}, "2": {"color": "#ef8354", "text": "Prono"}, "3": {"color": "#6f9ceb", "text": "Decubito destro"}, "4": {"color": "#b18be8", "text": "Decubito sinistro"}}, "type": "value"}],
+          "noValue": "Nessun dato",
+          "thresholds": {"mode": "absolute", "steps": [{"color": "#8da39d", "value": null}]}
+        },
+        "overrides": []
+      },
+      "gridPos": {"h": 4, "w": 24, "x": 0, "y": 4},
       "id": 1,
       "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "latestSession = from(bucket: \"posture\") |> range(start: 0) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> findRecord(fn: (key) => true, idx: 0)\nfrom(bucket: \"posture\") |> range(start: 0) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\" and r.session_id == latestSession.session_id) |> group(columns: []) |> last()", "refId": "A"}],
+      "targets": [{"query": "import \"array\"\nstate = from(bucket: \"posture\") |> range(start: -24h) |> filter(fn: (r) => r._measurement == \"night_session_state\" and r._field == \"active\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> map(fn: (r) => ({_time: r._time, _value: r._value, session_id: if r._value == 1 then r.session_id else \"__inactive__\"}))\ninactive = array.from(rows: [{_time: now(), _value: 0, session_id: \"__inactive__\"}])\nactiveSession = union(tables: [inactive, state]) |> group(columns: []) |> max(column: \"_value\") |> findRecord(fn: (key) => true, idx: 0)\nfrom(bucket: \"posture\") |> range(start: -5m) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\" and r.session_id == activeSession.session_id) |> group(columns: []) |> last()", "refId": "A"}],
       "title": "Posizione corrente",
       "type": "stat"
     },
     {
       "datasource": {"type": "influxdb", "uid": "smartback-influx"},
-      "description": "Ultimo campione registrato per la sessione selezionata.",
-      "fieldConfig": {"defaults": {"color": {"fixedColor": "text", "mode": "fixed"}, "noValue": "--", "unit": "dateTimeAsIso"}, "overrides": []},
-      "gridPos": {"h": 4, "w": 12, "x": 12, "y": 0},
-      "id": 3,
-      "options": {"colorMode": "none", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
+      "description": "Vale 1 quando viene rilevata la posizione supina, 0 in ogni altra posizione.",
+      "fieldConfig": {"defaults": {"color": {"fixedColor": "#3ec6ae", "mode": "fixed"}, "custom": {"axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "rilevata", "axisPlacement": "auto", "axisSoftMin": 0, "axisSoftMax": 1, "barAlignment": 0, "drawStyle": "line", "fillOpacity": 14, "gradientMode": "opacity", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "insertNulls": false, "lineInterpolation": "stepAfter", "lineWidth": 2, "pointSize": 3, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "decimals": 0, "max": 1, "min": 0, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "id": 10,
+      "options": {"legend": {"calcs": [], "displayMode": "hidden", "placement": "bottom", "showLegend": false}, "tooltip": {"hideZeros": false, "mode": "single", "sort": "none"}},
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "latestSession = from(bucket: \"posture\") |> range(start: 0) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> findRecord(fn: (key) => true, idx: 0)\nfrom(bucket: \"posture\") |> range(start: 0) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\" and r.session_id == latestSession.session_id) |> group(columns: []) |> last() |> map(fn: (r) => ({r with _value: int(v: r._time) / 1000000}))", "refId": "A"}],
-      "title": "Ultima rilevazione",
-      "type": "stat"
+      "targets": [{"query": "import \"array\"\nstate = from(bucket: \"posture\") |> range(start: -24h) |> filter(fn: (r) => r._measurement == \"night_session_state\" and r._field == \"active\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> map(fn: (r) => ({_time: r._time, _value: r._value, session_id: if r._value == 1 then r.session_id else \"__inactive__\"}))\ninactive = array.from(rows: [{_time: now(), _value: 0, session_id: \"__inactive__\"}])\nactiveSession = union(tables: [inactive, state]) |> group(columns: []) |> max(column: \"_value\") |> findRecord(fn: (key) => true, idx: 0)\nfrom(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\" and r.session_id == activeSession.session_id) |> map(fn: (r) => ({_time: r._time, _value: if r.position == \"supine\" then 1.0 else 0.0, _field: \"Supino\"})) |> group(columns: []) |> sort(columns: [\"_time\"])", "refId": "A"}],
+      "title": "Supino",
+      "type": "timeseries"
     },
     {
       "datasource": {"type": "influxdb", "uid": "smartback-influx"},
-      "description": "Sequenza temporale delle posizioni durante la sessione notturna.",
-      "fieldConfig": {"defaults": {"color": {"mode": "thresholds"}, "custom": {"fillOpacity": 75, "lineWidth": 1, "spanNulls": false}, "mappings": [{"options": {"0": {"color": "#8da39d", "text": "Transizione"}, "1": {"color": "#3ec6ae", "text": "Supino"}, "2": {"color": "#ef8354", "text": "Prono"}, "3": {"color": "#6f9ceb", "text": "Decubito destro"}, "4": {"color": "#b18be8", "text": "Decubito sinistro"}}, "type": "value"}], "thresholds": {"mode": "absolute", "steps": [{"color": "#8da39d", "value": null}]}}, "overrides": []},
-      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 4},
-      "id": 4,
-      "options": {"alignValue": "left", "legend": {"displayMode": "hidden", "placement": "bottom", "showLegend": false}, "mergeValues": true, "rowHeight": 0.8, "showValue": "never", "tooltip": {"mode": "single", "sort": "none"}},
+      "description": "Vale 1 quando viene rilevata la posizione prona, 0 in ogni altra posizione.",
+      "fieldConfig": {"defaults": {"color": {"fixedColor": "#ef8354", "mode": "fixed"}, "custom": {"axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "rilevata", "axisPlacement": "auto", "axisSoftMin": 0, "axisSoftMax": 1, "barAlignment": 0, "drawStyle": "line", "fillOpacity": 14, "gradientMode": "opacity", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "insertNulls": false, "lineInterpolation": "stepAfter", "lineWidth": 2, "pointSize": 3, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "decimals": 0, "max": 1, "min": 0, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "id": 11,
+      "options": {"legend": {"calcs": [], "displayMode": "hidden", "placement": "bottom", "showLegend": false}, "tooltip": {"hideZeros": false, "mode": "single", "sort": "none"}},
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "latestSession = from(bucket: \"posture\") |> range(start: 0) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> findRecord(fn: (key) => true, idx: 0)\nfrom(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\" and r.session_id == latestSession.session_id) |> group(columns: []) |> sort(columns: [\"_time\"])", "refId": "A"}],
-      "title": "Posizioni durante la notte",
-      "type": "state-timeline"
+      "targets": [{"query": "import \"array\"\nstate = from(bucket: \"posture\") |> range(start: -24h) |> filter(fn: (r) => r._measurement == \"night_session_state\" and r._field == \"active\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> map(fn: (r) => ({_time: r._time, _value: r._value, session_id: if r._value == 1 then r.session_id else \"__inactive__\"}))\ninactive = array.from(rows: [{_time: now(), _value: 0, session_id: \"__inactive__\"}])\nactiveSession = union(tables: [inactive, state]) |> group(columns: []) |> max(column: \"_value\") |> findRecord(fn: (key) => true, idx: 0)\nfrom(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\" and r.session_id == activeSession.session_id) |> map(fn: (r) => ({_time: r._time, _value: if r.position == \"prone\" then 1.0 else 0.0, _field: \"Prono\"})) |> group(columns: []) |> sort(columns: [\"_time\"])", "refId": "A"}],
+      "title": "Prono",
+      "type": "timeseries"
     },
     {
       "datasource": {"type": "influxdb", "uid": "smartback-influx"},
-      "description": "Distribuzione indicativa del tempo tra le posizioni rilevate; gli intervalli senza dati oltre 10 secondi vengono esclusi.",
-      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "decimals": 0, "unit": "s"}, "overrides": [{"matcher": {"id": "byRegexp", "options": ".*supine.*"}, "properties": [{"id": "color", "value": {"fixedColor": "#3ec6ae", "mode": "fixed"}}]}, {"matcher": {"id": "byRegexp", "options": ".*prone.*"}, "properties": [{"id": "color", "value": {"fixedColor": "#ef8354", "mode": "fixed"}}]}, {"matcher": {"id": "byRegexp", "options": ".*right_side.*"}, "properties": [{"id": "color", "value": {"fixedColor": "#6f9ceb", "mode": "fixed"}}]}, {"matcher": {"id": "byRegexp", "options": ".*left_side.*"}, "properties": [{"id": "color", "value": {"fixedColor": "#b18be8", "mode": "fixed"}}]}, {"matcher": {"id": "byRegexp", "options": ".*unknown.*"}, "properties": [{"id": "color", "value": {"fixedColor": "#8da39d", "mode": "fixed"}}]}]},
-      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 13},
-      "id": 5,
-      "options": {"displayLabels": ["name", "percent"], "legend": {"displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"]}, "pieType": "donut", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "tooltip": {"hideZeros": false, "mode": "single", "sort": "none"}},
+      "description": "Vale 1 quando viene rilevato il decubito destro, 0 in ogni altra posizione.",
+      "fieldConfig": {"defaults": {"color": {"fixedColor": "#6f9ceb", "mode": "fixed"}, "custom": {"axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "rilevata", "axisPlacement": "auto", "axisSoftMin": 0, "axisSoftMax": 1, "barAlignment": 0, "drawStyle": "line", "fillOpacity": 14, "gradientMode": "opacity", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "insertNulls": false, "lineInterpolation": "stepAfter", "lineWidth": 2, "pointSize": 3, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "decimals": 0, "max": 1, "min": 0, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "id": 12,
+      "options": {"legend": {"calcs": [], "displayMode": "hidden", "placement": "bottom", "showLegend": false}, "tooltip": {"hideZeros": false, "mode": "single", "sort": "none"}},
       "pluginVersion": "12.0.2",
-      "targets": [{"query": "latestSession = from(bucket: \"posture\") |> range(start: 0) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> findRecord(fn: (key) => true, idx: 0)\nfrom(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"confidence\" and r.patient_id == \"${patient_id}\" and r.session_id == latestSession.session_id) |> group(columns: [\"position\"]) |> elapsed(unit: 1s) |> filter(fn: (r) => r.elapsed >= 0 and r.elapsed <= 10) |> group(columns: [\"position\"]) |> sum(column: \"elapsed\") |> map(fn: (r) => ({_time: r._time, _value: float(v: r.elapsed), position: r.position}))", "refId": "A"}],
-      "title": "Distribuzione delle posizioni",
-      "type": "piechart"
+      "targets": [{"query": "import \"array\"\nstate = from(bucket: \"posture\") |> range(start: -24h) |> filter(fn: (r) => r._measurement == \"night_session_state\" and r._field == \"active\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> map(fn: (r) => ({_time: r._time, _value: r._value, session_id: if r._value == 1 then r.session_id else \"__inactive__\"}))\ninactive = array.from(rows: [{_time: now(), _value: 0, session_id: \"__inactive__\"}])\nactiveSession = union(tables: [inactive, state]) |> group(columns: []) |> max(column: \"_value\") |> findRecord(fn: (key) => true, idx: 0)\nfrom(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\" and r.session_id == activeSession.session_id) |> map(fn: (r) => ({_time: r._time, _value: if r.position == \"right_side\" then 1.0 else 0.0, _field: \"Decubito destro\"})) |> group(columns: []) |> sort(columns: [\"_time\"])", "refId": "A"}],
+      "title": "Decubito destro",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+      "description": "Vale 1 quando viene rilevato il decubito sinistro, 0 in ogni altra posizione.",
+      "fieldConfig": {"defaults": {"color": {"fixedColor": "#b18be8", "mode": "fixed"}, "custom": {"axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "rilevata", "axisPlacement": "auto", "axisSoftMin": 0, "axisSoftMax": 1, "barAlignment": 0, "drawStyle": "line", "fillOpacity": 14, "gradientMode": "opacity", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "insertNulls": false, "lineInterpolation": "stepAfter", "lineWidth": 2, "pointSize": 3, "scaleDistribution": {"type": "linear"}, "showPoints": "never", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "decimals": 0, "max": 1, "min": 0, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "id": 13,
+      "options": {"legend": {"calcs": [], "displayMode": "hidden", "placement": "bottom", "showLegend": false}, "tooltip": {"hideZeros": false, "mode": "single", "sort": "none"}},
+      "pluginVersion": "12.0.2",
+      "targets": [{"query": "import \"array\"\nstate = from(bucket: \"posture\") |> range(start: -24h) |> filter(fn: (r) => r._measurement == \"night_session_state\" and r._field == \"active\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> map(fn: (r) => ({_time: r._time, _value: r._value, session_id: if r._value == 1 then r.session_id else \"__inactive__\"}))\ninactive = array.from(rows: [{_time: now(), _value: 0, session_id: \"__inactive__\"}])\nactiveSession = union(tables: [inactive, state]) |> group(columns: []) |> max(column: \"_value\") |> findRecord(fn: (key) => true, idx: 0)\nfrom(bucket: \"posture\") |> range(start: v.timeRangeStart, stop: v.timeRangeStop) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\" and r.session_id == activeSession.session_id) |> map(fn: (r) => ({_time: r._time, _value: if r.position == \"left_side\" then 1.0 else 0.0, _field: \"Decubito sinistro\"})) |> group(columns: []) |> sort(columns: [\"_time\"])", "refId": "A"}],
+      "title": "Decubito sinistro",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+      "description": "Percentuale live del tempo trascorso nelle quattro posizioni durante la sessione notturna attiva.",
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "decimals": 0, "max": 100, "min": 0, "unit": "percent"}, "overrides": [{"matcher": {"id": "byName", "options": "Supino"}, "properties": [{"id": "color", "value": {"fixedColor": "#3ec6ae", "mode": "fixed"}}]}, {"matcher": {"id": "byName", "options": "Prono"}, "properties": [{"id": "color", "value": {"fixedColor": "#ef8354", "mode": "fixed"}}]}, {"matcher": {"id": "byName", "options": "Decubito destro"}, "properties": [{"id": "color", "value": {"fixedColor": "#6f9ceb", "mode": "fixed"}}]}, {"matcher": {"id": "byName", "options": "Decubito sinistro"}, "properties": [{"id": "color", "value": {"fixedColor": "#b18be8", "mode": "fixed"}}]}]},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+      "id": 14,
+      "options": {"displayMode": "gradient", "minVizHeight": 16, "minVizWidth": 8, "namePlacement": "auto", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showUnfilled": true, "sizing": "auto", "valueMode": "color"},
+      "pluginVersion": "12.0.2",
+      "targets": [
+        {"query": "import \"array\"\nstate = from(bucket: \"posture\") |> range(start: -24h) |> filter(fn: (r) => r._measurement == \"night_session_state\" and r._field == \"active\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> map(fn: (r) => ({_time: r._time, _value: r._value, session_id: if r._value == 1 then r.session_id else \"__inactive__\"}))\ninactive = array.from(rows: [{_time: now(), _value: 0, session_id: \"__inactive__\"}])\nactiveSession = union(tables: [inactive, state]) |> group(columns: []) |> max(column: \"_value\") |> findRecord(fn: (key) => true, idx: 0)\nclassified = from(bucket: \"posture\") |> range(start: -24h) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\" and r.session_id == activeSession.session_id) |> map(fn: (r) => ({_time: r._time, position: r.position}))\nbaseline = array.from(rows: [{_time: now(), position: \"baseline\"}])\nunion(tables: [baseline, classified]) |> group(columns: []) |> reduce(identity: {selected: 0.0, total: 0.0}, fn: (r, accumulator) => ({selected: accumulator.selected + (if r.position == \"supine\" then 1.0 else 0.0), total: accumulator.total + (if r.position == \"baseline\" then 0.0 else 1.0)})) |> map(fn: (r) => ({_time: now(), _field: \"Supino\", _value: if r.total > 0.0 then r.selected / r.total * 100.0 else 0.0}))", "refId": "A"},
+        {"query": "import \"array\"\nstate = from(bucket: \"posture\") |> range(start: -24h) |> filter(fn: (r) => r._measurement == \"night_session_state\" and r._field == \"active\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> map(fn: (r) => ({_time: r._time, _value: r._value, session_id: if r._value == 1 then r.session_id else \"__inactive__\"}))\ninactive = array.from(rows: [{_time: now(), _value: 0, session_id: \"__inactive__\"}])\nactiveSession = union(tables: [inactive, state]) |> group(columns: []) |> max(column: \"_value\") |> findRecord(fn: (key) => true, idx: 0)\nclassified = from(bucket: \"posture\") |> range(start: -24h) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\" and r.session_id == activeSession.session_id) |> map(fn: (r) => ({_time: r._time, position: r.position}))\nbaseline = array.from(rows: [{_time: now(), position: \"baseline\"}])\nunion(tables: [baseline, classified]) |> group(columns: []) |> reduce(identity: {selected: 0.0, total: 0.0}, fn: (r, accumulator) => ({selected: accumulator.selected + (if r.position == \"prone\" then 1.0 else 0.0), total: accumulator.total + (if r.position == \"baseline\" then 0.0 else 1.0)})) |> map(fn: (r) => ({_time: now(), _field: \"Prono\", _value: if r.total > 0.0 then r.selected / r.total * 100.0 else 0.0}))", "refId": "B"},
+        {"query": "import \"array\"\nstate = from(bucket: \"posture\") |> range(start: -24h) |> filter(fn: (r) => r._measurement == \"night_session_state\" and r._field == \"active\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> map(fn: (r) => ({_time: r._time, _value: r._value, session_id: if r._value == 1 then r.session_id else \"__inactive__\"}))\ninactive = array.from(rows: [{_time: now(), _value: 0, session_id: \"__inactive__\"}])\nactiveSession = union(tables: [inactive, state]) |> group(columns: []) |> max(column: \"_value\") |> findRecord(fn: (key) => true, idx: 0)\nclassified = from(bucket: \"posture\") |> range(start: -24h) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\" and r.session_id == activeSession.session_id) |> map(fn: (r) => ({_time: r._time, position: r.position}))\nbaseline = array.from(rows: [{_time: now(), position: \"baseline\"}])\nunion(tables: [baseline, classified]) |> group(columns: []) |> reduce(identity: {selected: 0.0, total: 0.0}, fn: (r, accumulator) => ({selected: accumulator.selected + (if r.position == \"right_side\" then 1.0 else 0.0), total: accumulator.total + (if r.position == \"baseline\" then 0.0 else 1.0)})) |> map(fn: (r) => ({_time: now(), _field: \"Decubito destro\", _value: if r.total > 0.0 then r.selected / r.total * 100.0 else 0.0}))", "refId": "C"},
+        {"query": "import \"array\"\nstate = from(bucket: \"posture\") |> range(start: -24h) |> filter(fn: (r) => r._measurement == \"night_session_state\" and r._field == \"active\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> map(fn: (r) => ({_time: r._time, _value: r._value, session_id: if r._value == 1 then r.session_id else \"__inactive__\"}))\ninactive = array.from(rows: [{_time: now(), _value: 0, session_id: \"__inactive__\"}])\nactiveSession = union(tables: [inactive, state]) |> group(columns: []) |> max(column: \"_value\") |> findRecord(fn: (key) => true, idx: 0)\nclassified = from(bucket: \"posture\") |> range(start: -24h) |> filter(fn: (r) => r._measurement == \"night_position\" and r._field == \"position_code\" and r.patient_id == \"${patient_id}\" and r.session_id == activeSession.session_id) |> map(fn: (r) => ({_time: r._time, position: r.position}))\nbaseline = array.from(rows: [{_time: now(), position: \"baseline\"}])\nunion(tables: [baseline, classified]) |> group(columns: []) |> reduce(identity: {selected: 0.0, total: 0.0}, fn: (r, accumulator) => ({selected: accumulator.selected + (if r.position == \"left_side\" then 1.0 else 0.0), total: accumulator.total + (if r.position == \"baseline\" then 0.0 else 1.0)})) |> map(fn: (r) => ({_time: now(), _field: \"Decubito sinistro\", _value: if r.total > 0.0 then r.selected / r.total * 100.0 else 0.0}))", "refId": "D"}
+      ],
+      "title": "Distribuzione percentuale della sessione live",
+      "type": "bargauge"
     }
   ],
   "refresh": "1s",
@@ -69,10 +132,10 @@
       {"current": {}, "datasource": {"type": "influxdb", "uid": "smartback-influx"}, "definition": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"posture\", tag: \"patient_id\", predicate: (r) => r._measurement == \"night_position\", start: 0)", "hide": 0, "includeAll": false, "label": "Paziente monitorato", "multi": false, "name": "patient_id", "options": [], "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"posture\", tag: \"patient_id\", predicate: (r) => r._measurement == \"night_position\", start: 0)", "refresh": 1, "regex": "", "skipUrlSync": false, "sort": 1, "type": "query"}
     ]
   },
-  "time": {"from": "now-12h", "to": "now"},
-  "timepicker": {"refresh_intervals": ["1s", "5s", "10s", "30s", "1m"], "time_options": ["1h", "6h", "12h", "24h", "7d", "30d"]},
+  "time": {"from": "now-30s", "to": "now"},
+  "timepicker": {"refresh_intervals": ["1s", "5s", "10s", "30s", "1m"], "time_options": ["30s", "1m", "2m", "5m", "15m", "30m", "1h"]},
   "timezone": "browser",
   "title": "SmartBack - Monitoraggio notturno",
   "uid": "smartback-night",
-  "version": 1
+  "version": 3
 }

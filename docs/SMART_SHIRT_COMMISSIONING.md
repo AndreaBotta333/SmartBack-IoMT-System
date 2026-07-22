@@ -126,6 +126,9 @@ SMARTSHIRT_PATIENT_ID=patient-demo-001
 
 ## Alert
 
+La nomenclatura completa mostrata al medico e descritta in
+[`ALERTS.md`](ALERTS.md).
+
 Node-RED genera:
 
 - `BATTERY_LOW` sotto o uguale al 20%;
@@ -173,6 +176,12 @@ La convenzione esposta alle interfacce e:
 Le soglie pitch usano i campi storici `moderate_deviation_deg` e
 `marked_deviation_deg` per compatibilita con l'app. Le soglie roll sono
 `moderate_roll_deg` e `marked_roll_deg`.
+
+Nella dashboard diurna il medico puo anche impostare manualmente i riferimenti
+`Cal. Manuale P` e `Cal. Manuale R`, senza attendere una postura o dati live.
+La procedura richiede una maglia assegnata e salva gli stessi riferimenti della
+calibrazione guidata in SQLite e InfluxDB; se il classificatore e attivo, i
+nuovi valori vengono applicati immediatamente.
 
 Gli alert transitano su `smartback/alerts/device` e
 `smartback/alerts/posture`, vengono mostrati dal nodo
