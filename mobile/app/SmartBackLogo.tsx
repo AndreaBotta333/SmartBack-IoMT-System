@@ -6,13 +6,13 @@ export function SmartBackLogo({ large = false }: { large?: boolean }) {
     <Image
       accessibilityLabel="SmartBack"
       resizeMode="contain"
-      source={require("./assets/smartback-logo-transparent.png")}
+      source={large ? require("./assets/smartback-logo-login.png") : require("./assets/smartback-logo-transparent.png")}
       style={large ? styles.large : styles.compact}
     />
   );
 }
 
 const styles = StyleSheet.create({
-  large: { width: 286, height: 250 },
+  large: { width: 286, height: 197 },
   compact: { width: 58, height: 58 },
 });

@@ -29,6 +29,9 @@ yarn-error.*
 # macOS
 .DS_Store
 *.pem
+google-services.json
+*-firebase-adminsdk-*.json
+firebase-service-account*.json
 
 # local env files
 .env*.local

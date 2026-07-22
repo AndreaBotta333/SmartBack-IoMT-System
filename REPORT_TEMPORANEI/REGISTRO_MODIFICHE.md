@@ -787,3 +787,85 @@ Introdurre una modalità notturna attivabile dal Paziente, mostrare in tempo rea
 - Il riquadro contiene un solo istogramma verticale con le percentuali persistenti complessive di supino, prono, decubito destro e decubito sinistro.
 - Introdotto un endpoint aggregato che calcola i totali su tutte le sessioni notturne concluse, senza il limite dell'elenco paginato e senza includere la sessione live ancora attiva.
 - Aumentato lo spazio sopra le barre degli istogrammi notturni e riallineata la guida del 100%, evitando che la linea orizzontale attraversi le etichette percentuali.
+- Corretto l'indicatore `Live` nella lista pazienti del medico: ora considera sia la telemetria diurna corrente sia una sessione notturna attiva, che continua a risultare live anche dopo il logout del paziente.
+- La lista dei pazienti viene aggiornata silenziosamente ogni cinque secondi, così l'avvio o la conclusione della modalità notte viene riflesso senza dover riaprire l'app.
+- Ritagliato esclusivamente il margine trasparente superiore del logo usato nella schermata di accesso e adeguata l'altezza del componente, eliminando lo spazio vuoto che spostava inutilmente il form verso il basso.
+
+## 22 luglio 2026 — Stato del monitoraggio nella scheda dispositivo
+
+### Modifiche
+
+- Aggiunto accanto alla batteria il terzo indicatore `Monitoraggio`, visibile sia al paziente sia al medico che consulta un paziente.
+- Lo stato segue la stessa regola della dashboard Grafana: è `ON` in verde quando è presente telemetria posturale diurna ricevuta negli ultimi 10 secondi, altrimenti è `OFF` in rosso.
+- Durante una sessione notturna lo stato del monitoraggio diurno rimane `OFF`, coerentemente con Grafana.
+- Resa più compatta la scheda riepilogativa per ospitare dispositivo, batteria e monitoraggio senza sovrapposizioni su schermi mobili.
+
+## 22 luglio 2026 — Eliminazione dell'account
+
+### Modifiche
+
+- Aggiunta nelle impostazioni una sezione dedicata all'eliminazione dell'account, distinta graficamente come azione irreversibile.
+- Prima dell'operazione viene mostrata una conferma esplicita che informa l'utente della perdita dell'accesso e della conservazione del profilo di monitoraggio gestito dal medico.
+- L'eliminazione riguarda esclusivamente l'account digitale: revoca le sessioni, rimuove i token, l'avatar e rende definitivamente inutilizzabili le credenziali.
+- Nome, cognome e codice fiscale restano nel profilo di monitoraggio, coerentemente con la possibilità per il medico di gestire da Grafana anche pazienti privi di account sull'app.
+- Associazione medico-paziente, maglia assegnata, eventuale monitoraggio attivo, misurazioni, sessioni, calibrazioni e configurazioni restano invariati.
+- Aggiunta nelle impostazioni la sezione `Sicurezza`, dalla quale è possibile aprire la schermata di cambio password già disponibile nel profilo.
+- Rimossa dal riquadro `Elimina account` la nota descrittiva grigia; le conseguenze dell'operazione restano illustrate nella finestra di conferma.
+- Rinominata da `Monitoraggio` a `Stato` l'etichetta dell'indicatore ON/OFF affiancato alla batteria.
+- Abbreviata da `Tipo dispositivo` a `Dispositivo` l'etichetta del riepilogo della maglia.
+- Uniformato il tema del riquadro `Storico diurno` a quello del riquadro `Monitoraggio diurno`, sia nella vista Paziente sia nella consultazione del paziente da parte del Medico.
+- Uniformato il tema degli storici notturni al riquadro `Monitoraggio notturno`, con sfondo azzurro e bordo coordinato nelle viste Paziente e Medico.
+- Arricchito lo storico notturno del Medico, sulla base dei pannelli Grafana, con i tempi effettivi in posizione supina, prona, decubito destro e decubito sinistro e con il tempo non classificato.
+- I tempi mostrati si aggiornano insieme al selettore: rappresentano la singola sessione scelta oppure il totale delle sessioni comprese nella finestra temporale.
+
+## 22 luglio 2026 — Preparazione APK Android e notifiche push
+
+### Riferimento didattico
+
+- Analizzate integralmente le slide `incontri_applicazione_mobile.pdf`, con particolare attenzione alle pagine 28-37 dedicate a Expo Push Token, Expo Dev Client, APK development, Firebase e credenziali FCM V1.
+- Confermato che Expo Go non supporta le notifiche push remote Android con SDK 54: è necessaria una development build installabile.
+
+### Modifiche
+
+- Installato `expo-dev-client` compatibile con Expo SDK 54 e aggiunto un profilo EAS `development` che produce un APK per distribuzione interna.
+- Configurato `expo-notifications`, due canali Android separati (`Avvisi posturali` e `Smart t-shirt`) e la registrazione dell'Expo Push Token sul backend dopo l'accesso.
+- Aggiunte API autenticate per registrare/rimuovere il token del singolo telefono e inviare una notifica di prova dalle Impostazioni.
+- Implementato l'invio server-side tramite Expo Push Service, operativo anche con app in background o chiusa dopo la configurazione FCM.
+- Le notifiche automatiche riguardano deviazione pronunciata, deviazione prolungata, batteria bassa, batteria critica e interruzione del flusso dati.
+- Gli eventi di ripristino e ritorno alla postura corretta restano nello storico ma non generano notifiche, riducendo notifiche ridondanti.
+- La batteria genera una sola notifica al passaggio sotto il 20% e un eventuale secondo avviso al passaggio sotto il 10%, non a ogni campione.
+- Aggiunti al `.gitignore` i file Firebase e le chiavi di servizio, che non devono essere versionati.
+
+### Passaggi esterni ancora necessari
+
+- Collegare il progetto a un account Expo/EAS per ottenere il `projectId`.
+- Creare l'app Android `it.smartback.monitoring` su Firebase, fornire localmente `google-services.json` e caricare su EAS la chiave Service Account FCM V1.
+- Generare l'APK con il profilo development e verificare sul dispositivo fisico la notifica di prova e gli alert reali.
+- Collegato il progetto EAS `@3ab/smartback` e configurato l'uso di `GOOGLE_SERVICES_JSON` come variabile-file protetta per rendere disponibile al builder il file Firebase escluso da Git.
+- Impostata esplicitamente la sorgente remota della versione dell'app e l'ambiente EAS `development`, eliminando gli avvisi mostrati dalla prima procedura di build.
+- Sostituita l'icona launcher con il file `icona_app_smartback.png` fornito, senza modificarne contenuto o proporzioni.
+- Rimossa dalle Impostazioni la sezione con il pulsante per la notifica di prova; registrazione del telefono e notifiche automatiche restano attive.
+- Aggiornato il testo della deviazione prolungata in `Fai una pausa e raddrizza la schiena.`; la soglia temporale effettiva resta pari a 5 secondi.
+- Abilitato l'incremento automatico del `versionCode` anche per gli APK development, così le nuove build possono aggiornare correttamente l'app Android già installata.
+- Aggiunta nell'intestazione dell'app una campanella vettoriale, posizionata a sinistra dell'icona profilo, che apre l'archivio delle notifiche SmartBack.
+- Le notifiche generate dal backend vengono ora conservate in SQLite per l'account destinatario e mostrate in ordine cronologico con giorno e orario, anche quando l'app era chiusa al momento dell'invio.
+- Aggiunto nella parte superiore dell'archivio il comando `Cancella`, protetto da conferma, per eliminare tutte le notifiche dell'account.
+- Nella lista pazienti del Medico sostituito l'identificativo tecnico visualizzato sotto l'email con il codice fiscale del paziente.
+- Aggiunto all'archivio notifiche il comando `Aggiorna` e il gesto pull-to-refresh, entrambi collegati a un nuovo caricamento dal backend.
+- Verificata la catena remota Expo/FCM con una notifica diagnostica: ticket e ricevuta risultano entrambi `ok`; l'eventuale mancata visualizzazione nella tendina dipende quindi dai permessi o dai canali Android del dispositivo.
+- Ripetuta la diagnosi separatamente sui due token associati all'account: entrambi hanno ottenuto ticket Expo e ricevuta FCM `ok`, confermando che il blocco di visualizzazione è locale al sistema Android.
+- Aggiunta nelle Impostazioni la sezione `Notifiche del telefono`, che mostra lo stato effettivo del permesso Android e apre direttamente le impostazioni native di SmartBack per abilitare notifiche, banner e canali.
+- Sostituiti i canali Android precedenti con nuovi identificativi interni, evitando che impostazioni silenziate conservate dal sistema operativo continuino a bloccare la visualizzazione.
+- Impostata priorità massima lato app e priorità alta con durata di un'ora lato Expo/FCM; abilitati esplicitamente suono, vibrazione e visibilità nella schermata di blocco.
+- Individuata nei log la causa della divergenza fra archivio interno e tendina Android: gli alert automatici venivano salvati correttamente, ma alcuni invii a Expo fallivano per errori DNS temporanei (`Name or service not known`).
+- Aggiunti quattro tentativi automatici con attesa esponenziale per gli errori temporanei di rete/DNS e un log esplicito del numero di messaggi accettati da Expo.
+- Verificato il nuovo percorso usando lo stesso payload di una deviazione pronunciata automatica: Expo ha accettato l'invio per tutti i token registrati.
+- Verificato con ESP connesso che gli alert reali venivano generati, ma gli invii concorrenti saturavano la risoluzione DNS del container e fallivano anche dopo i retry.
+- Serializzati gli invii verso Expo e introdotto un intervallo minimo di 60 secondi per account e tipo di notifica, evitando raffiche duplicate e richieste DNS concorrenti.
+- L'archivio della campanella viene ora aggiornato solo dopo l'accettazione dell'invio da parte di Expo: non mostra più come ricevute notifiche che non hanno superato il passaggio di consegna.
+- Verificato che la rete corrente consente il traffico locale ESP/MQTT ma presenta risoluzione DNS Internet instabile o assente dal container; questo spiega perché la telemetria locale può funzionare mentre Expo/FCM fallisce.
+- Separato nuovamente, in modo controllato, l'archivio interno dalla consegna remota: ogni nuovo alert viene conservato nella campanella anche senza Internet, con un massimo di un evento al minuto per tipo, mentre la notifica Android viene inviata quando Expo è raggiungibile.
+- Estesa la consegna remota a otto tentativi con intervalli progressivi fino a 30 secondi, coprendo interruzioni Internet temporanee sensibilmente più lunghe.
+- Verificata nuovamente la raggiungibilità di Expo sia dal Mac sia dal container (`HTTP 200`) e accettato un payload reale di deviazione pronunciata su tutti i token registrati.
+- Lo screenshot del telefono ha confermato la consegna differita FCM: notifiche generate tra le 17:32 e le 17:35 sono comparse insieme alle 17:41 dopo il passaggio da OpenWrt a una rete con accesso Internet.
+- Confermato il requisito multi-dispositivo: ogni account può registrare contemporaneamente più Expo Push Token, uno per ciascun telefono o tablet. Eventuali dispositivi rimossi durante la diagnosi vengono registrati nuovamente al successivo login.

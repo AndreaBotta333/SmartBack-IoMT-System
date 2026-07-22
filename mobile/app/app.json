@@ -10,6 +10,13 @@
     "plugins": [
       "expo-secure-store",
       [
+        "expo-notifications",
+        {
+          "color": "#20a38c",
+          "defaultChannel": "device"
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "SmartBack accede alle tue foto per permetterti di scegliere l'immagine del profilo.",
@@ -29,15 +36,18 @@
     },
     "android": {
       "package": "it.smartback.monitoring",
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
+      "googleServicesFile": "./google-services.json",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "4849f8aa-3f37-4128-8b43-1419cf865962"
+      }
+    },
+    "owner": "3ab"
   }
 }

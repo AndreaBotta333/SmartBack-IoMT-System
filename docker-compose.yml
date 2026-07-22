@@ -102,8 +102,10 @@ services:
     profiles: ["simulation"]
     build: ./simulator
     container_name: smartback-simulator
-    # Evita dati sintetici dopo il riavvio di Docker quando si usa la maglia reale.
-    restart: "no"
+    # Una volta avviato tramite il profilo simulation deve sopravvivere ai
+    # riavvii di Docker; pubblica soltanto device_id simulati, quindi non si
+    # sovrappone alla maglia fisica tshirt002.
+    restart: unless-stopped
     volumes:
       - ./simulator:/app:ro
     environment:

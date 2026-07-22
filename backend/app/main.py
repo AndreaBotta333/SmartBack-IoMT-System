@@ -15,10 +15,11 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Response, WebSocket, WebSocketDisconnect
+from fastapi import Cookie, Depends, FastAPI, Header, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 from app.config import (
@@ -47,6 +48,7 @@ from app.influx_manager import InfluxManager
 from app.mqtt_handler import SmartBackMqttHandler
 from app.night_service import NightPositionEngine
 from app.posture_service import PostureEngine, ThresholdProfile
+from app.push_service import notification_for_alert, send_expo_push
 EMAIL_DOMAIN_PATTERN = re.compile(
     r"^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,63}$",
     re.IGNORECASE,
@@ -62,6 +64,9 @@ night_engine: NightPositionEngine | None = None
 auth_db: sqlite3.Connection | None = None
 pending_grafana_calibrations: dict[tuple[str, str], dict[str, Any]] = {}
 database_lock = threading.RLock()
+push_delivery_lock = asyncio.Lock()
+push_last_processed_at: dict[tuple[str, str], float] = {}
+PUSH_NOTIFICATION_COOLDOWN_SECONDS = 60.0
 
 
 class RegisterRequest(BaseModel):
@@ -175,6 +180,18 @@ class AvatarRequest(BaseModel):
         if len(decoded) > 2_000_000:
             raise ValueError("La foto è troppo grande; scegli un'immagine inferiore a 2 MB")
         return value
+
+
+class PushTokenRequest(BaseModel):
+    token: str = Field(min_length=20, max_length=256)
+
+    @field_validator("token")
+    @classmethod
+    def validate_expo_token(cls, value: str) -> str:
+        normalized = value.strip()
+        if not re.fullmatch(r"(?:Exponent|Expo)PushToken\[[A-Za-z0-9_-]+\]", normalized):
+            raise ValueError("Token Expo Push non valido")
+        return normalized
 
 
 class AssociatePatientRequest(BaseModel):
@@ -770,12 +787,58 @@ async def lifespan(app: FastAPI):
         simulated_device_provider=simulated_device_ids,
         active_night_simulation_provider=active_simulated_night_device_ids,
         night_engine=night_engine,
+        alert_callback=lambda payload: asyncio.run_coroutine_threadsafe(
+            dispatch_push_alert(payload), loop
+        ),
     )
     mqtt_handler.start(loop)
     yield
     await mqtt_handler.stop()
     influx_manager.close()
     auth_db.close()
+
+
+def push_recipient_for_patient_code(patient_code: str) -> tuple[str | None, list[str]]:
+    with database_lock:
+        user = auth_db.execute(
+            "SELECT id FROM users WHERE patient_code=? AND account_registered=1",
+            (patient_code,),
+        ).fetchone()
+        if user is None:
+            return None, []
+        rows = auth_db.execute(
+            "SELECT token FROM push_tokens WHERE user_id=?",
+            (user["id"],),
+        ).fetchall()
+    return str(user["id"]), [str(row["token"]) for row in rows]
+
+
+async def dispatch_push_alert(alert: dict[str, Any]) -> int:
+    notification = notification_for_alert(alert)
+    if notification is None:
+        return 0
+    user_id, tokens = push_recipient_for_patient_code(str(alert.get("patient_id") or ""))
+    if user_id is None or not tokens:
+        return 0
+    code = str(alert.get("code") or "UNKNOWN")
+    delivery_key = (user_id, code)
+    async with push_delivery_lock:
+        now = asyncio.get_running_loop().time()
+        last_processed = push_last_processed_at.get(delivery_key)
+        if last_processed is not None and now - last_processed < PUSH_NOTIFICATION_COOLDOWN_SECONDS:
+            return 0
+        push_last_processed_at[delivery_key] = now
+        with database_lock:
+            auth_db.execute(
+                "INSERT INTO app_notifications(id,user_id,title,body,code,created_at) VALUES (?,?,?,?,?,?)",
+                (
+                    f"ntf_{secrets.token_hex(10)}", user_id,
+                    notification["title"], notification["body"], code,
+                    datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+            auth_db.commit()
+        return await asyncio.to_thread(send_expo_push, tokens, notification)
 
 
 app = FastAPI(
@@ -792,6 +855,56 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def italian_validation_message(error: dict[str, Any]) -> str:
+    error_type = str(error.get("type", ""))
+    context = error.get("ctx") or {}
+    location = error.get("loc") or ()
+    field = str(location[-1]) if location else ""
+    original = str(error.get("msg", ""))
+    if error_type == "missing":
+        return "Campo obbligatorio"
+    if error_type == "string_too_short":
+        return f"Il campo deve contenere almeno {context.get('min_length')} caratteri"
+    if error_type == "string_too_long":
+        return f"Il campo può contenere al massimo {context.get('max_length')} caratteri"
+    if error_type in {"greater_than", "greater_than_equal"}:
+        operator = "maggiore di" if error_type == "greater_than" else "maggiore o uguale a"
+        return f"Il valore deve essere {operator} {context.get('gt', context.get('ge'))}"
+    if error_type in {"less_than", "less_than_equal"}:
+        operator = "minore di" if error_type == "less_than" else "minore o uguale a"
+        return f"Il valore deve essere {operator} {context.get('lt', context.get('le'))}"
+    if error_type in {"float_parsing", "int_parsing", "decimal_parsing"}:
+        return "Inserisci un numero valido"
+    if error_type in {"string_pattern_mismatch", "literal_error", "enum"}:
+        return "Valore non consentito"
+    if field == "email" or field.endswith("email"):
+        return "Indirizzo email non valido"
+    if error_type == "value_error":
+        custom = re.sub(r"^Value error,\s*", "", original)
+        return custom if custom and custom != original or custom else "Valore non valido"
+    return "Valore non valido"
+
+
+@app.exception_handler(RequestValidationError)
+async def italian_request_validation_error(
+    _request: Request,
+    exc: RequestValidationError,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": [
+                {
+                    "loc": list(error.get("loc", ())),
+                    "type": error.get("type", "validation_error"),
+                    "msg": italian_validation_message(error),
+                }
+                for error in exc.errors()
+            ]
+        },
+    )
 
 
 @system_router.get("/")
@@ -1124,8 +1237,8 @@ def grafana_associate_patient(
             ") VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0)",
             (
                 patient_id,
-                "Paziente non registrato",
-                "Paziente",
+                "Utente non registrato",
+                "Utente",
                 "non registrato",
                 placeholder_email,
                 placeholder_digest,
@@ -1139,15 +1252,33 @@ def grafana_associate_patient(
         )
         auth_db.commit()
         patient = auth_db.execute("SELECT * FROM users WHERE id=?", (patient_id,)).fetchone()
-    try:
-        auth_db.execute(
-            "INSERT INTO doctor_patients(doctor_id,patient_id,created_at) VALUES (?,?,?)",
-            (user["id"], patient["id"], datetime.now(timezone.utc).isoformat()),
-        )
-        auth_db.commit()
-    except sqlite3.IntegrityError:
-        auth_db.rollback()
-        raise HTTPException(status_code=409, detail="Paziente già presente nella lista") from None
+    with database_lock:
+        existing_links = auth_db.execute(
+            "SELECT doctor_id FROM doctor_patients WHERE patient_id=?",
+            (patient["id"],),
+        ).fetchall()
+        if any(row["doctor_id"] != user["id"] for row in existing_links):
+            raise HTTPException(
+                status_code=409,
+                detail="Impossibile aggiungere il paziente perché è già associato a un altro medico",
+            )
+        if existing_links:
+            raise HTTPException(
+                status_code=409,
+                detail="Il paziente è già presente nella tua lista",
+            )
+        try:
+            auth_db.execute(
+                "INSERT INTO doctor_patients(doctor_id,patient_id,created_at) VALUES (?,?,?)",
+                (user["id"], patient["id"], datetime.now(timezone.utc).isoformat()),
+            )
+            auth_db.commit()
+        except sqlite3.IntegrityError:
+            auth_db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="Impossibile completare l'associazione del paziente",
+            ) from None
     return public_user(patient)
 
 
@@ -1421,7 +1552,7 @@ def medical_portal_page(
     <section><div class="toolbar"><div><h2>Lista magliette</h2><div class="muted">Inventario e assegnazioni attive.</div></div>
     <button onclick="deviceDialog.showModal()">＋ Aggiungi maglia</button></div><div class="grid device-grid" id="devices"></div></section></main>
     <dialog id="patientDialog"><h2 style="margin-top:0">Aggiungi un paziente</h2><p class="muted">Inserisci il codice fiscale. Il paziente potrà creare il proprio account SmartBack anche in seguito.</p>
-    <form id="patientForm"><label>Codice fiscale<input id="fiscalCode" maxlength="16" required style="margin-top:6px;text-transform:uppercase"></label>
+    <form id="patientForm"><label>Codice fiscale<input id="fiscalCode" maxlength="16" required autocapitalize="characters" autocomplete="off" spellcheck="false" style="margin-top:6px;text-transform:uppercase"></label>
     <p id="patientError" style="color:#ff8787;min-height:22px"></p><div class="actions"><button type="submit">Associa</button><button type="button" class="secondary" onclick="patientDialog.close()">Annulla</button></div></form></dialog>
     <dialog id="deviceDialog"><h2 style="margin-top:0">Aggiungi una maglia</h2>
     <h3>Maglie rilevate disponibili</h3><p class="muted">Il codice tecnico viene acquisito automaticamente dai dati ricevuti.</p>
@@ -1435,7 +1566,13 @@ def medical_portal_page(
     <script>
     const esc=s=>String(s??"").replace(/[&<>\"']/g,c=>({{"&":"&amp;","<":"&lt;",">":"&gt;",'\"':"&quot;","'":"&#39;"}}[c]));
     let state={{patients:[],devices:[],discovered_devices:[],summary:{{}}}};
-    async function request(url,options={{}}){{const r=await fetch(url,{{...options,headers:{{"Content-Type":"application/json",...(options.headers||{{}})}}}});if(r.status===401)location.href="/grafana-login";if(!r.ok){{const b=await r.json().catch(()=>({{}}));throw Error(b.detail||"Operazione non riuscita")}}return r.status===204?null:r.json()}}
+    function apiError(body){{
+      if(Array.isArray(body?.detail)){{
+        return body.detail.map(item=>String(item?.msg||'Dato non valido').replace(/^Value error,\\s*/,'')).join(' · ');
+      }}
+      return typeof body?.detail==='string'?body.detail:'Operazione non riuscita';
+    }}
+    async function request(url,options={{}}){{const r=await fetch(url,{{...options,headers:{{"Content-Type":"application/json",...(options.headers||{{}})}}}});if(r.status===401)location.href="/grafana-login";if(!r.ok){{const b=await r.json().catch(()=>({{}}));throw Error(apiError(b))}}return r.status===204?null:r.json()}}
     async function load(){{state=await request("/api/v1/grafana/home");render()}}
     function render(){{const s=state.summary;stats.innerHTML=[["Pazienti",s.patients],["Maglie totali",s.devices_total],["Maglie disponibili",s.devices_available],["Maglie assegnate",s.devices_assigned]].map(x=>`<div class="stat"><span class="muted">${{x[0]}}</span><b>${{x[1]}}</b></div>`).join("");
     patients.innerHTML=state.patients.length?state.patients.map(p=>{{
@@ -1451,7 +1588,7 @@ def medical_portal_page(
       const shirtAction=assigned
         ? `<button class="danger" onclick="releaseShirt('${{esc(p.assigned_device)}}')">Libera maglia</button>`
         : `<button ${{canAssign?'':'disabled'}} onclick="assign('${{esc(p.id)}}','${{esc(p.patient_code)}}')">Assegna maglia</button>`;
-      return `<article class="card"><h3>${{esc(p.name)}}</h3><div class="muted">${{esc(p.patient_code)}}</div><p><span class="badge ${{p.account_registered?'available':''}}">${{p.account_registered?'Account registrato':'Account non registrato'}}</span> ${{assigned?`<span class="badge assigned">Maglia ${{esc(p.assigned_device)}}</span>`:'<span class="badge">Nessuna maglia</span>'}}</p><div class="actions"><a class="button day-button" href="/grafana/d/smartback-overview/smartback-monitoraggio-paziente?var-patient_id=${{code}}&refresh=1s">DIURNO</a><a class="button day-button" href="/grafana/d/smartback-history/smartback-storico-paziente?var-patient_id=${{code}}">STORICO D</a><a class="button night-button" href="/grafana/d/smartback-night/smartback-monitoraggio-notturno?var-patient_id=${{code}}&refresh=1s">NOTTURNO</a><a class="button night-button" href="/grafana/d/smartback-night-history/smartback-storico-notturno?var-patient_id=${{code}}">STORICO N</a></div><div class="patient-controls"><select class="shirt-select" id="shirt-${{esc(p.id)}}" aria-label="Maglia da associare a ${{esc(p.name)}}" ${{canAssign?'':'disabled'}}>${{shirtOptions}}</select><div class="actions">${{shirtAction}}<button class="danger" onclick="removePatient('${{esc(p.patient_code)}}','${{esc(p.name)}}')">Rimuovi paziente</button></div></div></article>`
+      return `<article class="card"><h3>${{esc(p.name)}}</h3><div class="muted">${{esc(p.fiscal_code)}}</div><p><span class="badge ${{p.account_registered?'available':''}}">${{p.account_registered?'Account registrato':'Account non registrato'}}</span> ${{assigned?`<span class="badge assigned">Maglia ${{esc(p.assigned_device)}}</span>`:'<span class="badge">Nessuna maglia</span>'}}</p><div class="actions"><a class="button day-button" href="/grafana/d/smartback-overview/smartback-monitoraggio-paziente?var-patient_id=${{code}}&refresh=1s">DIURNO</a><a class="button day-button" href="/grafana/d/smartback-history/smartback-storico-paziente?var-patient_id=${{code}}">STORICO D</a><a class="button night-button" href="/grafana/d/smartback-night/smartback-monitoraggio-notturno?var-patient_id=${{code}}&refresh=1s">NOTTURNO</a><a class="button night-button" href="/grafana/d/smartback-night-history/smartback-storico-notturno?var-patient_id=${{code}}">STORICO N</a></div><div class="patient-controls"><select class="shirt-select" id="shirt-${{esc(p.id)}}" aria-label="Maglia da associare a ${{esc(p.name)}}" ${{canAssign?'':'disabled'}}>${{shirtOptions}}</select><div class="actions">${{shirtAction}}<button class="danger" onclick="removePatient('${{esc(p.patient_code)}}','${{esc(p.name)}}')">Rimuovi paziente</button></div></div></article>`
     }}).join(""):'<div class="card muted empty-state">Nessun paziente associato.</div>';
     devices.innerHTML=state.devices.length?state.devices.map(d=>`<article class="device"><h3>${{esc(d.display_name)}}</h3><div class="muted">ID ${{esc(d.inventory_id)}} · ${{esc(d.device_id)}}</div><p><span class="badge ${{d.has_telemetry?'available':''}}">${{d.has_telemetry?'Connessa':'Non connessa'}}</span> <span class="badge ${{d.available?'available':'assigned'}}">${{d.available?'Disponibile':'Assegnata'}}</span></p>${{d.patient_name?`<div>Assegnata a: <b>${{esc(d.patient_name)}}</b></div>`:''}}<div class="actions">${{!d.available&&d.patient_name!=='Altro paziente'?`<button class="danger" onclick="releaseShirt('${{esc(d.device_id)}}')">Libera maglia</button>`:''}}<button class="danger" onclick="removeDevice('${{esc(d.device_id)}}','${{esc(d.display_name)}}')">Rimuovi maglia</button></div></article>`).join(""):'<div class="device muted empty-state">Nessuna maglia registrata.</div>';
     const detected=state.discovered_devices||[];detectedDevice.innerHTML=detected.length?detected.map(d=>`<option value="${{esc(d.device_id)}}">${{esc(d.device_id)}}</option>`).join(''):'<option value="">Nessuna maglia rilevata</option>';claimDeviceButton.disabled=!detected.length;detectedDevice.disabled=!detected.length;detectedDeviceName.disabled=!detected.length}}
@@ -1459,6 +1596,7 @@ def medical_portal_page(
     async function releaseShirt(device){{if(!confirm('Liberare questa maglia? Lo storico precedente resterà associato al paziente.'))return;await request('/api/v1/grafana/devices/'+encodeURIComponent(device)+'/assignment',{{method:'DELETE'}});await load()}}
     async function removePatient(code,name){{if(!confirm(`Rimuovere ${{name}} dalla lista dei pazienti? La maglia verrà liberata, ma account e storico resteranno conservati.`))return;await request('/api/v1/grafana/patients/'+encodeURIComponent(code),{{method:'DELETE'}});await load()}}
     async function removeDevice(device,name){{if(!confirm(`Rimuovere ${{name}} dall'inventario? Le assegnazioni e lo storico resteranno conservati.`))return;await request('/api/v1/grafana/devices/'+encodeURIComponent(device),{{method:'DELETE'}});await load()}}
+    fiscalCode.addEventListener('input',()=>{{fiscalCode.value=fiscalCode.value.toUpperCase().replace(/\\s/g,'')}});
     patientForm.addEventListener('submit',async e=>{{e.preventDefault();patientError.textContent='';try{{await request('/api/v1/grafana/patients',{{method:'POST',body:JSON.stringify({{fiscal_code:fiscalCode.value}})}});patientDialog.close();patientForm.reset();await load()}}catch(err){{patientError.textContent=err.message}}}});load().catch(e=>document.querySelector('main').innerHTML='<p>'+esc(e.message)+'</p>');
     claimDeviceForm.addEventListener('submit',async e=>{{e.preventDefault();claimDeviceError.textContent='';const code=detectedDevice.value;if(!code)return;if(!confirm(`Acquisire la maglia rilevata ${{code}} nel proprio inventario?`))return;try{{await request('/api/v1/grafana/devices/discovered/'+encodeURIComponent(code)+'/claim',{{method:'POST',body:JSON.stringify({{display_name:detectedDeviceName.value}})}});deviceDialog.close();claimDeviceForm.reset();await load()}}catch(err){{claimDeviceError.textContent=err.message}}}});
     deviceForm.addEventListener('submit',async e=>{{e.preventDefault();deviceError.textContent='';try{{await request('/api/v1/grafana/devices',{{method:'POST',body:JSON.stringify({{display_name:deviceName.value}})}});deviceDialog.close();deviceForm.reset();await load()}}catch(err){{deviceError.textContent=err.message}}}});
@@ -1746,6 +1884,23 @@ def grafana_alert_session_control(
     """, headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
 
+@grafana_router.get(
+    "/api/v1/grafana/patients/{patient_code}/night-monitoring/status"
+)
+def grafana_night_monitoring_status(
+    patient_code: str,
+    smartback_grafana_session: str | None = Cookie(default=None),
+):
+    """Return the current night-mode state for the live Grafana control."""
+    user = verified_grafana_user(smartback_grafana_session)
+    patient = accessible_patient_by_code(user, patient_code)
+    session = active_night_session(patient["id"])
+    return {
+        "active": session is not None,
+        "session_id": str(session["id"]) if session is not None else None,
+    }
+
+
 @grafana_pages_router.get(
     "/api/v1/grafana/patients/{patient_code}/night-monitoring/control",
     response_class=HTMLResponse,
@@ -1796,11 +1951,34 @@ def grafana_night_monitoring_control(
       button{{min-width:270px;padding:14px 22px;border:0;border-radius:9px;background:{button_color};color:white;font-weight:800;font-size:16px;cursor:pointer;white-space:nowrap}}
       @media(max-width:650px){{button{{width:100%;min-width:0}}}}
     </style></head><body><main>
-      <form method="post" action="/api/v1/grafana/patients/{safe_patient}/night-monitoring/{action}"
-        onsubmit="return confirm('{confirmation}')">
+      <form id="night-form" method="post" action="/api/v1/grafana/patients/{safe_patient}/night-monitoring/{action}">
         <button type="submit">{button_text}</button>
       </form>
-    </main>{session_time_sync}</body></html>
+    </main>{session_time_sync}<script>
+      const form = document.getElementById('night-form');
+      let knownActive = {str(active).lower()};
+      form.addEventListener('submit', async event => {{
+        event.preventDefault();
+        if (!confirm('{confirmation}')) return;
+        try {{
+          await fetch(form.action, {{method: 'POST', cache: 'no-store'}});
+        }} finally {{
+          window.location.reload();
+        }}
+      }});
+      async function synchronizeNightState() {{
+        try {{
+          const response = await fetch(
+            '/api/v1/grafana/patients/{safe_patient}/night-monitoring/status',
+            {{cache: 'no-store'}}
+          );
+          if (!response.ok) return;
+          const state = await response.json();
+          if (Boolean(state.active) !== knownActive) window.location.reload();
+        }} catch (_) {{}}
+      }}
+      setInterval(synchronizeNightState, 1000);
+    </script></body></html>
     """)
 
 
@@ -2042,6 +2220,81 @@ def logout(authorization: str | None = Header(default=None)):
         auth_db.commit()
 
 
+@auth_router.post("/api/v1/notifications/token", status_code=204)
+def register_push_token(body: PushTokenRequest, user: sqlite3.Row = Depends(current_user)):
+    auth_db.execute(
+        "INSERT INTO push_tokens(token,user_id,updated_at) VALUES (?,?,?) "
+        "ON CONFLICT(token) DO UPDATE SET user_id=excluded.user_id,updated_at=excluded.updated_at",
+        (body.token, user["id"], datetime.now(timezone.utc).isoformat()),
+    )
+    auth_db.commit()
+
+
+@auth_router.delete("/api/v1/notifications/token", status_code=204)
+def unregister_push_token(body: PushTokenRequest, user: sqlite3.Row = Depends(current_user)):
+    auth_db.execute("DELETE FROM push_tokens WHERE token=? AND user_id=?", (body.token, user["id"]))
+    auth_db.commit()
+
+
+@auth_router.get("/api/v1/notifications")
+def list_app_notifications(limit: int = 100, user: sqlite3.Row = Depends(current_user)):
+    bounded_limit = max(1, min(limit, 250))
+    rows = auth_db.execute(
+        "SELECT id,title,body,code,created_at FROM app_notifications "
+        "WHERE user_id=? ORDER BY created_at DESC LIMIT ?",
+        (user["id"], bounded_limit),
+    ).fetchall()
+    return {"items": [dict(row) for row in rows]}
+
+
+@auth_router.delete("/api/v1/notifications", status_code=204)
+def clear_app_notifications(user: sqlite3.Row = Depends(current_user)):
+    auth_db.execute("DELETE FROM app_notifications WHERE user_id=?", (user["id"],))
+    auth_db.commit()
+
+
+@auth_router.post("/api/v1/notifications/test")
+async def test_push_notification(user: sqlite3.Row = Depends(current_user)):
+    rows = auth_db.execute("SELECT token FROM push_tokens WHERE user_id=?", (user["id"],)).fetchall()
+    notification = {
+        "title": "Notifica SmartBack",
+        "body": "Le notifiche sul dispositivo funzionano correttamente.",
+        "channelId": "smartshirt_alerts_v2",
+        "sound": "default",
+        "priority": "high",
+        "data": {"code": "PUSH_TEST"},
+    }
+    accepted = await asyncio.to_thread(send_expo_push, [str(row["token"]) for row in rows], notification)
+    if not rows:
+        raise HTTPException(status_code=409, detail="Nessun dispositivo registrato per le notifiche")
+    if accepted == 0:
+        raise HTTPException(status_code=502, detail="La notifica non è stata accettata dal servizio Expo")
+    return {"accepted": accepted}
+
+
+@auth_router.delete("/api/v1/auth/account", status_code=204)
+def delete_account(user: sqlite3.Row = Depends(current_user)):
+    """Remove app access without altering the independent monitoring profile."""
+    if user["id"] == "usr_grafana_admin":
+        raise HTTPException(status_code=403, detail="L'account amministratore non può essere eliminato")
+
+    tombstone_email = f"deleted-{user['id']}@smartback.invalid"
+    random_digest, random_salt = hash_password(secrets.token_urlsafe(48))
+    try:
+        auth_db.execute("DELETE FROM push_tokens WHERE user_id=?", (user["id"],))
+        auth_db.execute("DELETE FROM app_notifications WHERE user_id=?", (user["id"],))
+        auth_db.execute("DELETE FROM sessions WHERE user_id=?", (user["id"],))
+        auth_db.execute(
+            "UPDATE users SET email=?,password_hash=?,password_salt=?,avatar_data=NULL,"
+            "account_registered=0 WHERE id=?",
+            (tombstone_email, random_digest, random_salt, user["id"]),
+        )
+        auth_db.commit()
+    except sqlite3.Error:
+        auth_db.rollback()
+        raise HTTPException(status_code=500, detail="Impossibile eliminare l'account") from None
+
+
 @auth_router.put("/api/v1/auth/password", status_code=204)
 def change_password(body: ChangePasswordRequest, user: sqlite3.Row = Depends(current_user)):
     current_digest, _ = hash_password(body.current_password, bytes.fromhex(user["password_salt"]))
@@ -2068,7 +2321,9 @@ def doctor_patients(user: sqlite3.Row = Depends(current_user)):
     if user["role"] != "doctor":
         raise HTTPException(status_code=403, detail="Accesso riservato a medici e fisioterapisti")
     rows = auth_db.execute(
-        "SELECT patients.*, links.created_at AS associated_at "
+        "SELECT patients.*, links.created_at AS associated_at, "
+        "EXISTS(SELECT 1 FROM night_monitoring_sessions nights "
+        "WHERE nights.patient_id=patients.id AND nights.status='active') AS night_mode_active "
         "FROM doctor_patients links JOIN users patients ON patients.id=links.patient_id "
         "WHERE links.doctor_id=? ORDER BY patients.name COLLATE NOCASE",
         (user["id"],),
@@ -2077,7 +2332,8 @@ def doctor_patients(user: sqlite3.Row = Depends(current_user)):
     current_patient_code = latest_posture.get("patient_id") if latest_posture else None
     return {"items": [{
         **public_user(row), "associated_at": row["associated_at"],
-        "has_live_data": row["patient_code"] == current_patient_code,
+        "night_mode_active": bool(row["night_mode_active"]),
+        "has_live_data": row["patient_code"] == current_patient_code or bool(row["night_mode_active"]),
     } for row in rows], "count": len(rows)}
 
 
@@ -2102,9 +2358,10 @@ def associate_patient(body: AssociatePatientRequest, user: sqlite3.Row = Depends
     latest_posture = mqtt_handler.latest_posture if mqtt_handler else None
     return {
         **public_user(patient),
+        "night_mode_active": active_night_session(patient["id"]) is not None,
         "has_live_data": bool(
             latest_posture and patient["patient_code"] == latest_posture.get("patient_id")
-        ),
+        ) or active_night_session(patient["id"]) is not None,
     }
 
 

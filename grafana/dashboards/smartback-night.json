@@ -108,9 +108,21 @@
     },
     {
       "datasource": {"type": "influxdb", "uid": "smartback-influx"},
+      "description": "Tempo totale trascorso dall'attivazione della sessione notturna corrente.",
+      "fieldConfig": {"defaults": {"color": {"fixedColor": "#5794f2", "mode": "fixed"}, "decimals": 0, "noValue": "0 s", "unit": "s"}, "overrides": []},
+      "gridPos": {"h": 4, "w": 24, "x": 0, "y": 24},
+      "id": 16,
+      "options": {"colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showPercentChange": false, "textMode": "value", "wideLayout": true},
+      "pluginVersion": "12.0.2",
+      "targets": [{"query": "import \"array\"\nstate = from(bucket: \"posture\") |> range(start: -7d) |> filter(fn: (r) => r._measurement == \"night_session_state\" and r._field == \"active\" and r.patient_id == \"${patient_id}\") |> group(columns: []) |> last() |> filter(fn: (r) => r._value == 1) |> map(fn: (r) => ({_time: now(), _field: \"durata_sessione\", _value: float(v: uint(v: now()) - uint(v: r._time)) / 1000000000.0}))\nbaseline = array.from(rows: [{_time: now(), _field: \"durata_sessione\", _value: 0.0}])\nunion(tables: [baseline, state]) |> group(columns: []) |> max(column: \"_value\")", "refId": "A"}],
+      "title": "Tempo totale sessione corrente",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "smartback-influx"},
       "description": "Percentuale live del tempo trascorso nelle quattro posizioni durante la sessione notturna attiva.",
       "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "decimals": 0, "max": 100, "min": 0, "unit": "percent"}, "overrides": [{"matcher": {"id": "byName", "options": "Supino"}, "properties": [{"id": "color", "value": {"fixedColor": "#3ec6ae", "mode": "fixed"}}]}, {"matcher": {"id": "byName", "options": "Prono"}, "properties": [{"id": "color", "value": {"fixedColor": "#ef8354", "mode": "fixed"}}]}, {"matcher": {"id": "byName", "options": "Decubito destro"}, "properties": [{"id": "color", "value": {"fixedColor": "#6f9ceb", "mode": "fixed"}}]}, {"matcher": {"id": "byName", "options": "Decubito sinistro"}, "properties": [{"id": "color", "value": {"fixedColor": "#b18be8", "mode": "fixed"}}]}]},
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 28},
       "id": 14,
       "options": {"displayMode": "gradient", "minVizHeight": 16, "minVizWidth": 8, "namePlacement": "auto", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "showUnfilled": true, "sizing": "auto", "valueMode": "color"},
       "pluginVersion": "12.0.2",

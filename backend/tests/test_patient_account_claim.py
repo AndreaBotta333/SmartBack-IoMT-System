@@ -2,6 +2,8 @@ import os
 import tempfile
 import unittest
 
+from fastapi import HTTPException
+
 from app import main as main_module
 from app.database import init_database
 
@@ -53,6 +55,7 @@ class PatientAccountClaimTests(unittest.TestCase):
         patient_id = associated["id"]
         patient_code = associated["patient_code"]
         self.assertFalse(associated["account_registered"])
+        self.assertEqual(associated["name"], "Utente non registrato")
 
         created_shirt = main_module.grafana_create_device(
             main_module.DeviceCreateRequest(display_name="Maglia test"),
@@ -108,6 +111,46 @@ class PatientAccountClaimTests(unittest.TestCase):
         self.assertTrue(doctor["professional_verified"])
         self.assertEqual(result["redirect"], "/smartback/")
         self.assertIn(main_module.GRAFANA_SESSION_COOKIE, response.headers["set-cookie"])
+
+    def test_patient_already_associated_with_another_doctor_has_clear_error(self) -> None:
+        main_module.grafana_associate_patient(
+            main_module.AssociatePatientRequest(fiscal_code="RSSMRA80A01H501U"),
+            smartback_grafana_session="doctor-1",
+        )
+        main_module.verified_grafana_user = lambda _token: self.database.execute(
+            "SELECT * FROM users WHERE id='doctor-2'"
+        ).fetchone()
+
+        with self.assertRaises(HTTPException) as raised:
+            main_module.grafana_associate_patient(
+                main_module.AssociatePatientRequest(fiscal_code="RSSMRA80A01H501U"),
+                smartback_grafana_session="doctor-2",
+            )
+
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(
+            raised.exception.detail,
+            "Impossibile aggiungere il paziente perché è già associato a un altro medico",
+        )
+
+    def test_validation_messages_are_translated_to_italian(self) -> None:
+        self.assertEqual(
+            main_module.italian_validation_message({
+                "type": "string_too_short",
+                "loc": ("body", "fiscal_code"),
+                "msg": "String should have at least 16 characters",
+                "ctx": {"min_length": 16},
+            }),
+            "Il campo deve contenere almeno 16 caratteri",
+        )
+        self.assertEqual(
+            main_module.italian_validation_message({
+                "type": "value_error",
+                "loc": ("body", "fiscal_code"),
+                "msg": "Value error, Codice fiscale non valido",
+            }),
+            "Codice fiscale non valido",
+        )
 
     def test_each_doctor_has_an_isolated_inventory_numbered_from_zero(self) -> None:
         doctors = {

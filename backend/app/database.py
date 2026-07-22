@@ -24,6 +24,14 @@ def init_database(path: str) -> sqlite3.Connection:
             token TEXT PRIMARY KEY, user_id TEXT NOT NULL, updated_at TEXT NOT NULL,
             FOREIGN KEY(user_id) REFERENCES users(id)
         );
+        CREATE TABLE IF NOT EXISTS app_notifications (
+            id TEXT PRIMARY KEY, user_id TEXT NOT NULL,
+            title TEXT NOT NULL, body TEXT NOT NULL, code TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_app_notifications_user_created
+            ON app_notifications(user_id, created_at DESC);
         CREATE TABLE IF NOT EXISTS doctor_patients (
             doctor_id TEXT NOT NULL, patient_id TEXT NOT NULL,
             created_at TEXT NOT NULL,

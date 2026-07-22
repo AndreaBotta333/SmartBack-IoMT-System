@@ -130,6 +130,15 @@ class NightMonitoringTests(unittest.TestCase):
             main_module.start_night_monitoring(user=self.user("doctor-1"))
         self.assertEqual(raised.exception.status_code, 403)
 
+    def test_active_night_session_marks_patient_as_live_for_doctor(self) -> None:
+        main_module.start_night_monitoring(user=self.user("patient-1"))
+
+        result = main_module.doctor_patients(user=self.user("doctor-1"))
+
+        self.assertEqual(result["count"], 1)
+        self.assertTrue(result["items"][0]["night_mode_active"])
+        self.assertTrue(result["items"][0]["has_live_data"])
+
     def test_associated_doctor_can_start_and_stop_from_grafana(self) -> None:
         started = main_module.grafana_start_night_monitoring(
             patient_code="patient-demo-001",
@@ -150,6 +159,22 @@ class NightMonitoringTests(unittest.TestCase):
         ).fetchone()
         self.assertEqual(completed["status"], "completed")
         self.assertEqual(completed["end_reason"], "doctor")
+
+    def test_grafana_status_reflects_session_started_by_patient(self) -> None:
+        inactive = main_module.grafana_night_monitoring_status(
+            patient_code="patient-demo-001",
+            smartback_grafana_session="grafana-doctor-1",
+        )
+        self.assertFalse(inactive["active"])
+
+        main_module.start_night_monitoring(user=self.user("patient-1"))
+
+        active = main_module.grafana_night_monitoring_status(
+            patient_code="patient-demo-001",
+            smartback_grafana_session="grafana-doctor-1",
+        )
+        self.assertTrue(active["active"])
+        self.assertIsNotNone(active["session_id"])
 
     def test_unassociated_doctor_cannot_control_night_mode(self) -> None:
         with self.assertRaises(HTTPException) as raised:

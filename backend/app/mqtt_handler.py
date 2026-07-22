@@ -20,6 +20,7 @@ DeviceSeenCallback = Callable[[str, str], None]
 AssignmentProvider = Callable[[], list[dict[str, str]]]
 SimulatedDeviceProvider = Callable[[], list[str]]
 ActiveNightSimulationProvider = Callable[[], list[str]]
+AlertCallback = Callable[[dict[str, Any]], None]
 
 
 class SmartBackMqttHandler:
@@ -40,6 +41,7 @@ class SmartBackMqttHandler:
         simulated_device_provider: SimulatedDeviceProvider | None = None,
         active_night_simulation_provider: ActiveNightSimulationProvider | None = None,
         night_engine: NightPositionEngine | None = None,
+        alert_callback: AlertCallback | None = None,
     ) -> None:
         self.host = host
         self.port = port
@@ -55,6 +57,7 @@ class SmartBackMqttHandler:
         self.simulated_device_provider = simulated_device_provider
         self.active_night_simulation_provider = active_night_simulation_provider
         self.night_engine = night_engine
+        self.alert_callback = alert_callback
 
         self._lock = threading.RLock()
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -68,6 +71,7 @@ class SmartBackMqttHandler:
         self._monitoring_session: dict[str, str] = {}
         self._stale_alerted: set[str] = set()
         self._last_raw_device_seen: dict[str, float] = {}
+        self._last_battery_alert: dict[str, str | None] = {}
 
     @property
     def latest_posture(self) -> dict[str, Any] | None:
@@ -159,6 +163,11 @@ class SmartBackMqttHandler:
     ) -> None:
         if self._client is None:
             return
+        with self._lock:
+            if patient_id is None:
+                self._device_patient.pop(device_id, None)
+            else:
+                self._device_patient[device_id] = patient_id
         payload = {
             "device_id": device_id,
             "patient_id": patient_id,
@@ -251,6 +260,7 @@ class SmartBackMqttHandler:
                     self.device_seen(str(payload["device_id"]), str(payload["quality"]))
                 with self._lock:
                     self._latest_device = payload
+                self._publish_battery_transition(client, payload)
         except Exception as exc:
             print(f"Cannot process MQTT message from {message.topic}: {exc}", flush=True)
 
@@ -321,8 +331,42 @@ class SmartBackMqttHandler:
             "duration_seconds": processed["deviation_duration_seconds"],
             "session_id": self._monitoring_session.get(device_id),
         }
-        client.publish(self.alert_topic, json.dumps(payload), qos=1)
+        self._publish_alert(client, payload)
         self._last_posture_alert[device_id] = current_alert
+
+    def _publish_battery_transition(self, client: mqtt.Client, payload: dict[str, Any]) -> None:
+        device_id = str(payload["device_id"])
+        charge = payload.get("state_of_charge")
+        patient_id = self._device_patient.get(device_id)
+        if charge is None or not patient_id:
+            return
+        charge = float(charge)
+        code = "BATTERY_CRITICAL" if charge <= 10 else "BATTERY_LOW" if charge <= 20 else None
+        previous = self._last_battery_alert.get(device_id)
+        if code == previous:
+            return
+        self._last_battery_alert[device_id] = code
+        if code is None:
+            return
+        self._publish_alert(client, {
+            "schema_version": 1,
+            "timestamp": int(datetime.now(timezone.utc).timestamp() * 1000),
+            "device_id": device_id,
+            "patient_id": patient_id,
+            "category": "battery",
+            "severity": "critical" if code == "BATTERY_CRITICAL" else "warning",
+            "code": code,
+            "message": f"Batteria residua {charge:.0f}%",
+            "active": True,
+            "state_of_charge": charge,
+            "session_id": self._monitoring_session.get(device_id),
+        })
+
+    def _publish_alert(self, client: mqtt.Client, payload: dict[str, Any]) -> None:
+        client.publish(self.alert_topic, json.dumps(payload), qos=1)
+        alert_callback = getattr(self, "alert_callback", None)
+        if alert_callback:
+            alert_callback(dict(payload))
 
     def _publish_stream_alert(
         self,
@@ -350,7 +394,7 @@ class SmartBackMqttHandler:
             "silent_seconds": round(silent_seconds, 1),
             "session_id": self._monitoring_session.get(device_id),
         }
-        client.publish(self.alert_topic, json.dumps(payload), qos=1)
+        self._publish_alert(client, payload)
 
     async def _monitor_data_stream(self) -> None:
         while True:

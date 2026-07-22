@@ -67,9 +67,9 @@ class PostureEngine:
         calibration_provider: Callable[[str, str], tuple[float, float] | None] | None = None,
     ) -> None:
         if not 0 < ema_alpha <= 1:
-            raise ValueError("ema_alpha must be in the interval (0, 1]")
+            raise ValueError("ema_alpha deve essere compreso nell'intervallo (0, 1]")
         if hysteresis_deg < 0:
-            raise ValueError("hysteresis_deg cannot be negative")
+            raise ValueError("hysteresis_deg non può essere negativo")
         self._profile_provider = profile_provider
         self._calibration_provider = calibration_provider
         self._ema_alpha = ema_alpha
