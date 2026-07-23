@@ -35,6 +35,9 @@ Simulatore Python ───┘                              │
    raggiungibile attraverso un gateway che accetta soltanto sessioni SmartBack
    appartenenti a medici verificati.
 
+La struttura dei due database, le relative responsabilità e il flusso di
+registrazione dei medici sono descritti in `docs/DATABASES.md`.
+
 ## Storico persistente
 
 InfluxDB conserva lo storico con retention infinita. Grafana lo legge per la

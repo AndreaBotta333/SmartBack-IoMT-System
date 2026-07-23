@@ -84,6 +84,8 @@ Quando cambia la rete Wi-Fi, aggiornare `HOST_IP` in `.env`, ricreare il contain
 - Le notifiche push sono temporaneamente accantonate.
 - Le soglie posturali attuali sono dimostrative e dovranno essere consolidate nella documentazione tecnica e tramite fonti mediche.
 - L'architettura completa e descritta in `docs/ARCHITECTURE.md`.
+- Database, tabelle, measurement e flussi di registrazione sono descritti in
+  `docs/DATABASES.md`.
 - La procedura per il primo collegamento fisico e in `docs/SMART_SHIRT_COMMISSIONING.md`.
 - Il backend applica soglie indipendenti per inclinazione pitch e roll.
 - Grafana separa angoli, deviazioni, batteria, qualità del flusso e alert.
