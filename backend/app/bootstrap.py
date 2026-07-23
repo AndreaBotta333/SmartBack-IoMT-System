@@ -293,6 +293,21 @@ def active_device_assignments() -> list[dict[str, str]]:
     return services.telemetry().active_assignments()
 
 
+def patient_device_status(
+    user: sqlite3.Row,
+    patient_id: str | None,
+) -> dict[str, Any]:
+    if auth_db is None:
+        raise HTTPException(status_code=503, detail="Database non disponibile")
+    if user["role"] == "patient":
+        patient = user
+    else:
+        if not patient_id:
+            raise HTTPException(status_code=400, detail="Seleziona un paziente")
+        patient = accessible_patient(user, patient_id)
+    return current_device_service().patient_status(str(patient["id"]))
+
+
 def simulated_device_ids() -> list[str]:
     if auth_db is None:
         return []
@@ -475,8 +490,11 @@ _device_handlers = register_device_endpoints(
     lambda token: verified_grafana_user(token),
     lambda user, patient_code: accessible_patient_by_code(user, patient_code),
     lambda: mqtt_handler.latest_device if mqtt_handler else None,
+    current_user,
+    patient_device_status,
 )
 get_latest_device = _device_handlers["get_latest_device"]
+get_patient_device_status = _device_handlers["get_patient_device_status"]
 grafana_create_device = _device_handlers["grafana_create_device"]
 grafana_claim_discovered_device = _device_handlers[
     "grafana_claim_discovered_device"

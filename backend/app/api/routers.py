@@ -61,6 +61,7 @@ OPENAPI_SUMMARIES = {
     ("get", "/api/v1/night-monitoring/history"): "Mostra lo storico notturno",
     ("get", "/api/v1/night-monitoring/sessions/{session_id}"): "Mostra una sessione notturna",
     ("get", "/api/v1/device/latest"): "Mostra lo stato più recente della smart shirt",
+    ("get", "/api/v1/device/status"): "Mostra dispositivo assegnato e connessione del paziente",
     ("post", "/api/v1/devices/{device_id}/calibration"): "Calibra la smart shirt",
     ("post", "/api/v1/grafana/login"): "Accedi al portale medico",
     ("get", "/api/v1/grafana/home"): "Mostra i dati della Home medica",

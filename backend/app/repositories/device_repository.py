@@ -103,6 +103,18 @@ class DeviceRepository:
             (device_id, doctor_id),
         ).fetchone()
 
+    def active_for_patient(self, patient_id: str) -> sqlite3.Row | None:
+        return self._connection.execute(
+            "SELECT devices.device_id,devices.display_name,"
+            "devices.source_type,devices.last_seen_at "
+            "FROM device_assignments assignments "
+            "JOIN devices ON devices.device_id=assignments.device_id "
+            "WHERE assignments.patient_id=? "
+            "AND assignments.released_at IS NULL "
+            "AND devices.archived_at IS NULL LIMIT 1",
+            (patient_id,),
+        ).fetchone()
+
     def assign(
         self,
         *,

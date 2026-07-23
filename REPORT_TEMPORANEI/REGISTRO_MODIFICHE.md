@@ -869,3 +869,22 @@ Introdurre una modalità notturna attivabile dal Paziente, mostrare in tempo rea
 - Verificata nuovamente la raggiungibilità di Expo sia dal Mac sia dal container (`HTTP 200`) e accettato un payload reale di deviazione pronunciata su tutti i token registrati.
 - Lo screenshot del telefono ha confermato la consegna differita FCM: notifiche generate tra le 17:32 e le 17:35 sono comparse insieme alle 17:41 dopo il passaggio da OpenWrt a una rete con accesso Internet.
 - Confermato il requisito multi-dispositivo: ogni account può registrare contemporaneamente più Expo Push Token, uno per ciascun telefono o tablet. Eventuali dispositivi rimossi durante la diagnosi vengono registrati nuovamente al successivo login.
+
+## 23 luglio 2026 — Riepilogo dispositivo e monitoraggio contestuale
+
+### Modifiche
+
+- Sostituita nell'app la derivazione del dispositivo dall'ultimo campione WebSocket con un endpoint autenticato e specifico per il paziente selezionato.
+- Il riquadro `Dispositivo` mostra ora esclusivamente tipologia e nome assegnato nell'inventario, senza esporre l'identificativo tecnico.
+- Il nome viene mostrato solo quando la maglia è ancora assegnata e ha trasmesso recentemente; in caso di disconnessione o deallocazione da Grafana compaiono `OFF`, testo rosso e icona rossa.
+- Ridotto a cinque secondi l'intervallo di aggiornamento del riepilogo, così disconnessioni e deallocazioni vengono riflesse rapidamente sia lato Paziente sia lato Medico.
+- Reso il riquadro `Stato` dipendente dalla scheda selezionata: in `DIURNO` segue la telemetria posturale recente, in `NOTTURNO` segue l'attivazione della sessione notturna.
+- Semplificato il pannello blu notturno rimuovendo titolo, nota ed elemento lunare; il comando inattivo è ora `ATTIVA MONITORAGGIO` con il blu della scheda notturna.
+- Rinominato il comando di arresto in `TERMINA MONITORAGGIO`, mantenendo il badge Live e i dati della sessione quando attiva.
+- Rimosso successivamente il badge `Live` dal pannello del monitoraggio notturno.
+- Semplificato ulteriormente `Dispositivo`: quando connesso mostra soltanto il nome assegnato alla maglia, senza tipologia né identificativo tecnico.
+
+### Verifiche
+
+- Compilazione TypeScript completata senza errori.
+- Eseguiti 93 test backend con esito positivo, incluso il nuovo caso su nome dispositivo, connessione e deallocazione.

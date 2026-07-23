@@ -137,6 +137,12 @@ class ServiceContainer:
         return DeviceService(
             DeviceRepository(self.database(), self.database_lock),
             self.mqtt_provider(),
+            self.device_connected,
+            lambda: (
+                self.mqtt_provider().latest_device
+                if self.mqtt_provider() is not None
+                else None
+            ),
         )
 
     def patients(self) -> PatientService:

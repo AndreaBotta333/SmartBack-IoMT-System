@@ -1,7 +1,8 @@
 """Casi d'uso dell'inventario e delle assegnazioni delle maglie."""
 
 from datetime import datetime, timezone
-from typing import Protocol
+from collections.abc import Callable
+from typing import Any, Protocol
 
 from app.repositories.device_repository import (
     DeviceRepository,
@@ -53,9 +54,13 @@ class DeviceService:
         self,
         repository: DeviceRepository,
         messaging: DeviceMessaging | None = None,
+        connection_checker: Callable[[str | None], bool] | None = None,
+        latest_device_provider: Callable[[], dict[str, Any] | None] | None = None,
     ) -> None:
         self._repository = repository
         self._messaging = messaging
+        self._connection_checker = connection_checker or (lambda _value: False)
+        self._latest_device_provider = latest_device_provider or (lambda: None)
 
     @staticmethod
     def _now() -> str:
@@ -81,6 +86,39 @@ class DeviceService:
                 active=False,
             )
         return {**device, "has_telemetry": False}
+
+    def patient_status(self, patient_id: str) -> dict[str, Any]:
+        device = self._repository.active_for_patient(patient_id)
+        if device is None:
+            return {
+                "assigned": False,
+                "connected": False,
+                "device_id": None,
+                "display_name": None,
+                "device_type": None,
+                "state_of_charge": None,
+            }
+        connected = self._connection_checker(device["last_seen_at"])
+        latest = self._latest_device_provider()
+        battery = (
+            latest.get("state_of_charge")
+            if connected
+            and latest
+            and latest.get("device_id") == device["device_id"]
+            else None
+        )
+        return {
+            "assigned": True,
+            "connected": connected,
+            "device_id": device["device_id"],
+            "display_name": device["display_name"] or "Maglia senza nome",
+            "device_type": (
+                "Maglia simulata"
+                if device["source_type"] == "simulated"
+                else "Smart t-shirt"
+            ),
+            "state_of_charge": battery,
+        }
 
     def claim_discovered_device(
         self,

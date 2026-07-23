@@ -139,6 +139,41 @@ class DeviceServiceTests(unittest.TestCase):
                 device_id="missing",
             )
 
+    def test_patient_status_uses_inventory_name_and_active_assignment(self):
+        self.database.execute(
+            "UPDATE devices SET display_name='Maglia 1',"
+            "owner_doctor_id='doctor-1' WHERE device_id='tshirt002'"
+        )
+        self.database.execute(
+            "INSERT INTO device_assignments(device_id,patient_id,assigned_at) "
+            "VALUES ('tshirt002','patient-1','now')"
+        )
+        self.database.commit()
+        service = DeviceService(
+            self.repository,
+            self.messaging,
+            connection_checker=lambda _last_seen: True,
+            latest_device_provider=lambda: {
+                "device_id": "tshirt002",
+                "state_of_charge": 76,
+            },
+        )
+
+        status = service.patient_status("patient-1")
+
+        self.assertTrue(status["assigned"])
+        self.assertTrue(status["connected"])
+        self.assertEqual(status["display_name"], "Maglia 1")
+        self.assertEqual(status["device_type"], "Smart t-shirt")
+        self.assertEqual(status["state_of_charge"], 76)
+
+        self.database.execute(
+            "UPDATE device_assignments SET released_at='later' "
+            "WHERE patient_id='patient-1'"
+        )
+        self.database.commit()
+        self.assertFalse(service.patient_status("patient-1")["assigned"])
+
 
 if __name__ == "__main__":
     unittest.main()
