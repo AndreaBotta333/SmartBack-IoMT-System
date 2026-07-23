@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="/smartback-static/embedded-panel.css">
+  <link rel="stylesheet" href="/smartback-static/session-control.css">
+</head>
+<body>
+<main data-current="$current_session" data-mode="$mode">
+  <h2>Storico per sessione</h2>
+  <div class="controls">
+    <div><label for="search">Cerca per data o ora</label><input id="search" type="search" placeholder="$placeholder"></div>
+    <div><label for="sessions">Sessione selezionata</label><select id="sessions">$options</select></div>
+  </div>
+</main>
+<script src="/smartback-static/session-control.js" defer></script>
+</body>
+</html>

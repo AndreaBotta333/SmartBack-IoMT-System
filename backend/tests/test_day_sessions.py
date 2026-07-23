@@ -1,7 +1,7 @@
 import json
 import unittest
 
-from app.mqtt_handler import SmartBackMqttHandler
+from app.infrastructure.mqtt import SmartBackMqttHandler
 
 
 class FakeClient:

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SmartBack · Calibrazione posturale</title>
+  <link rel="stylesheet" href="/smartback-static/calibration-page.css">
+</head>
+<body data-patient="$patient_code">
+<main>
+  <a class="back" href="$monitoring_url">← Torna al monitoraggio</a>
+  <h1>Calibrazione posturale</h1>
+  <section class="current">
+    <strong>Paziente:</strong> $patient_code<br>
+    <strong>Riferimento attuale:</strong> $current_reference
+  </section>
+  <section class="warning">
+    <strong>Attenzione</strong>
+    <p>La nuova calibrazione sostituirà lo zero corrente di pitch e roll.
+    Il paziente deve essere fermo, in postura neutra, e la maglia deve risultare ON.</p>
+  </section>
+  <label class="acknowledgement">
+    <input id="ack" type="checkbox">
+    Ho preso visione: la calibrazione corrente verrà sostituita.
+  </label>
+  <button id="confirm" disabled>CONFERMA CALIBRAZIONE</button>
+  <p id="result" role="status"></p>
+</main>
+<script src="/smartback-static/calibration-page.js" defer></script>
+</body>
+</html>

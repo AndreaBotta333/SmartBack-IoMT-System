@@ -1,7 +1,7 @@
 import asyncio
 import unittest
 
-from app import main as main_module
+from app import bootstrap as main_module
 
 
 class FakeSocket:

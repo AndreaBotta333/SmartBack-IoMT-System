@@ -1,6 +1,6 @@
 import unittest
 
-from app.night_service import NightPositionEngine
+from app.domain.night import NightPositionEngine
 
 
 class NightPositionEngineTests(unittest.TestCase):

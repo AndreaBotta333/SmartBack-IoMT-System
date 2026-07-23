@@ -2,7 +2,7 @@ import unittest
 import urllib.error
 from unittest.mock import MagicMock, patch
 
-from app.push_service import notification_for_alert, send_expo_push
+from app.infrastructure.push import notification_for_alert, send_expo_push
 
 
 class PushNotificationMappingTests(unittest.TestCase):
@@ -32,8 +32,8 @@ class PushNotificationMappingTests(unittest.TestCase):
         self.assertEqual(notification_for_alert({"code": "BATTERY_LOW", "active": True})["channelId"], "smartshirt_alerts_v2")
         self.assertEqual(notification_for_alert({"code": "DATA_STREAM_STALE", "active": True})["channelId"], "smartshirt_alerts_v2")
 
-    @patch("app.push_service.time.sleep", return_value=None)
-    @patch("app.push_service.urllib.request.urlopen")
+    @patch("app.infrastructure.push.time.sleep", return_value=None)
+    @patch("app.infrastructure.push.urllib.request.urlopen")
     def test_temporary_network_failure_is_retried(self, mocked_open, _mocked_sleep) -> None:
         response = MagicMock()
         response.__enter__.return_value.read.return_value = b'{"data":[{"status":"ok","id":"ticket-1"}]}'

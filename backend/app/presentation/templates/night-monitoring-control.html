@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="/smartback-static/embedded-panel.css">
+  <link rel="stylesheet" href="/smartback-static/night-monitoring-control.css">
+</head>
+<body data-patient="$patient_code" data-active="$active" data-confirmation="$confirmation"
+      data-session-id="$session_id" data-session-start-ms="$session_start_ms">
+<main>
+  <form id="night-form" method="post" action="$action_url">
+    <button type="submit" class="$button_class">$button_text</button>
+  </form>
+</main>
+<script src="/smartback-static/night-monitoring-control.js" defer></script>
+</body>
+</html>

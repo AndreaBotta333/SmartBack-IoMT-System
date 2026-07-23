@@ -1,7 +1,7 @@
 import math
 import unittest
 
-from app.posture_service import PostureEngine, ThresholdProfile
+from app.domain.posture import PostureEngine, ThresholdProfile
 
 
 PROFILE = ThresholdProfile(

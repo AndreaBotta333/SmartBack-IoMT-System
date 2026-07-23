@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SmartBack · Portale medico</title>
+  <link rel="stylesheet" href="/smartback-static/grafana-login.css">
+</head>
+<body>
+<main>
+  <div class="brand">
+    <span class="brand-logo"><img src="/smartback-assets/logo.png" alt="Logo SmartBack"></span>
+    <div class="brand-copy">
+      <h1>SmartBack</h1>
+      <p class="intro">Portale medico<br>Accedi oppure crea un account riservato ai medici.</p>
+    </div>
+  </div>
+  <div class="tabs" role="tablist" aria-label="Accesso o registrazione">
+    <button id="login-tab" class="tab active" type="button" role="tab" aria-selected="true">Accedi</button>
+    <button id="register-tab" class="tab" type="button" role="tab" aria-selected="false">Registrati</button>
+  </div>
+  <form id="login" autocomplete="on">
+    <label>Email<input id="email" type="text" autocomplete="username" required></label>
+    <label>Password<span class="password-field"><input id="password" type="password" autocomplete="current-password" required><button class="password-toggle" type="button" data-password="password" aria-label="Mostra password" title="Mostra password"></button></span></label>
+    <button class="submit" type="submit">Accedi alla dashboard</button>
+    <p id="login-error" class="error" role="alert"></p>
+  </form>
+  <form id="register" class="hidden" autocomplete="on">
+    <label>Nome<input id="first-name" autocomplete="given-name" minlength="2" maxlength="50" required></label>
+    <label>Cognome<input id="last-name" autocomplete="family-name" minlength="2" maxlength="50" required></label>
+    <label>Email<input id="register-email" type="email" autocomplete="email" required></label>
+    <label>Password<span class="password-field"><input id="register-password" type="password" autocomplete="new-password" minlength="8" maxlength="128" required><button class="password-toggle" type="button" data-password="register-password" aria-label="Mostra password" title="Mostra password"></button></span></label>
+    <p class="hint">Almeno 8 caratteri, un numero e un simbolo speciale.</p>
+    <label>Codice medico<span class="password-field"><input id="medical-code" type="password" autocomplete="off" maxlength="80" required><button class="password-toggle" type="button" data-password="medical-code" data-label="codice medico" aria-label="Mostra codice medico" title="Mostra codice medico"></button></span></label>
+    <button class="submit" type="submit">Crea account medico</button>
+    <p id="register-error" class="error" role="alert"></p>
+  </form>
+  <script src="/smartback-static/grafana-login.js" defer></script>
+</main>
+</body>
+</html>

@@ -119,26 +119,31 @@ funzionalita di stima del tempo trascorso seduti. Con il solo orientamento del
 torso la distinzione seduto/in piedi richiedera una fase di calibrazione e
 validazione specifica.
 
-## Organizzazione backend iniziale
+## Organizzazione backend
 
 ```text
 backend/
 ├── app/
 │   ├── __init__.py
 │   ├── config.py           # configurazione da environment
-│   ├── database.py         # inizializzazione e migrazioni SQLite
-│   ├── device_contract.py  # schemi dei messaggi normalizzati
-│   ├── influx_manager.py   # persistenza e query delle serie temporali
-│   ├── mqtt_handler.py     # ingestion, stato realtime, watchdog e alert
-│   ├── posture_service.py  # calibrazione, smoothing e soglie pitch/roll
-│   └── main.py             # API, autenticazione e lifecycle
+│   ├── main.py             # solo entrypoint ASGI
+│   ├── bootstrap.py        # composition root e wiring dei controller
+│   ├── composition.py      # costruzione di repository e servizi
+│   ├── api/                # controller, dipendenze e configurazione FastAPI
+│   ├── domain/             # postura e monitoraggio notturno puri
+│   ├── schemas/            # contratti HTTP e messaggi Node-RED
+│   ├── services/           # casi d'uso applicativi
+│   ├── repositories/       # persistenza SQLite per dominio
+│   ├── infrastructure/     # MQTT, InfluxDB, Expo, SQLite e lifecycle
+│   └── presentation/       # pagine e asset del portale medico
 └── tools/
     └── mqtt_probe.py       # osservazione del traffico per commissioning
 ```
 
-`main.py` conserva gli endpoint e l'autenticazione per mantenere compatibilita
-con l'app corrente. Calcolo posturale, MQTT, database e InfluxDB non dipendono
-piu direttamente dagli endpoint FastAPI.
+La migrazione verso controller sottili, servizi applicativi e repository è
+incrementale per mantenere compatibilità con app, Grafana e dati esistenti.
+Struttura target e regole di dipendenza sono descritte in
+`docs/BACKEND_ARCHITECTURE.md`.
 
 ## Pitch e roll
 

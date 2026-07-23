@@ -1,4 +1,4 @@
-"""Validated messages at the Node-RED -> FastAPI boundary.
+"""Messaggi validati al confine Node-RED -> FastAPI.
 
 The physical gateway and simulator may emit different raw packets. Node-RED is
 responsible for mapping them to these stable normalized messages.

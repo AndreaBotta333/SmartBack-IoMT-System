@@ -9,10 +9,13 @@ from typing import Any, Awaitable, Callable
 
 import paho.mqtt.client as mqtt
 
-from app.device_contract import NormalizedDeviceStatus, NormalizedPostureSample
-from app.influx_manager import InfluxManager
-from app.night_service import NightPositionEngine
-from app.posture_service import PostureEngine
+from app.schemas.device_messages import (
+    NormalizedDeviceStatus,
+    NormalizedPostureSample,
+)
+from app.domain.night import NightPositionEngine
+from app.domain.posture import PostureEngine
+from app.infrastructure.influx import InfluxManager
 
 
 BroadcastCallback = Callable[[dict[str, Any]], Awaitable[None]]
@@ -139,14 +142,22 @@ class SmartBackMqttHandler:
                     ("unisadiem/smartshirt/+/+", 0),
                 ]
             )
-            if self.assignment_provider:
-                for assignment in self.assignment_provider():
-                    self.publish_device_assignment(
-                        assignment["device_id"], assignment["patient_id"]
-                    )
+            assignments = (
+                self.assignment_provider() if self.assignment_provider else []
+            )
+            assigned_device_ids = {
+                assignment["device_id"] for assignment in assignments
+            }
+            for assignment in assignments:
+                self.publish_device_assignment(
+                    assignment["device_id"], assignment["patient_id"]
+                )
             if self.simulated_device_provider:
                 for device_id in self.simulated_device_provider():
-                    self.publish_simulated_device(device_id, active=True)
+                    self.publish_simulated_device(
+                        device_id,
+                        active=device_id in assigned_device_ids,
+                    )
             if self.active_night_simulation_provider:
                 for device_id in self.active_night_simulation_provider():
                     self.publish_simulation_scenario(device_id, "night-cycle")
@@ -256,7 +267,9 @@ class SmartBackMqttHandler:
                         asyncio.run_coroutine_threadsafe(self.broadcast(processed), self._loop)
             elif message.topic == self.device_topic:
                 payload = NormalizedDeviceStatus.model_validate(raw_payload).model_dump()
-                if self.device_seen:
+                # A retained battery snapshot is inventory/history, not proof
+                # that the shirt is currently transmitting.
+                if self.device_seen and not message.retain:
                     self.device_seen(str(payload["device_id"]), str(payload["quality"]))
                 with self._lock:
                     self._latest_device = payload

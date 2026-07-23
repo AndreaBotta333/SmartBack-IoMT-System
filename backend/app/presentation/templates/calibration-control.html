@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="/smartback-static/embedded-panel.css">
+  <link rel="stylesheet" href="/smartback-static/calibration-control.css">
+</head>
+<body data-patient="$patient_code">
+<main>
+  <div class="cell"><label>Cal. Live</label><button id="auto" type="button">CALIBRA</button></div>
+  <div class="cell">
+    <label for="pitch">Cal. Manuale P</label>
+    <div class="input"><input id="pitch" type="text" value="$pitch" inputmode="decimal" autocomplete="off" data-min="-180" data-max="180"><span>°</span></div>
+    <button id="apply-pitch" class="apply" type="button">APPLICA</button>
+  </div>
+  <div class="cell">
+    <label for="roll">Cal. Manuale R</label>
+    <div class="input"><input id="roll" type="text" value="$roll" inputmode="decimal" autocomplete="off" data-min="-90" data-max="90"><span>°</span></div>
+    <button id="apply-roll" class="apply" type="button">APPLICA</button>
+  </div>
+</main>
+<script src="/smartback-static/calibration-control.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SmartBack · Pazienti</title>
+  <link rel="stylesheet" href="/smartback-static/medical-portal.css">
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="brand-logo"><img src="/smartback-assets/logo.png" alt="Logo SmartBack"></span>
+    <div><h1>SmartBack</h1><div class="muted">Portale medico</div></div>
+  </div>
+  <div><span class="muted">$doctor_name</span> · <a href="/grafana-logout" class="logout">Esci</a></div>
+</header>
+<main>
+  <section class="stats" id="stats"></section>
+  <section>
+    <div class="toolbar">
+      <div><h2>I miei pazienti</h2><div class="muted">Seleziona la scheda clinica da consultare.</div></div>
+      <button id="add-patient" type="button">＋ Aggiungi paziente</button>
+    </div>
+    <div class="grid" id="patients"></div>
+  </section>
+  <section>
+    <div class="toolbar">
+      <div><h2>Lista magliette</h2><div class="muted">Inventario e assegnazioni attive.</div></div>
+      <button id="add-device" type="button">＋ Aggiungi maglia</button>
+    </div>
+    <div class="grid device-grid" id="devices"></div>
+  </section>
+</main>
+<dialog id="patientDialog">
+  <h2>Aggiungi un paziente</h2>
+  <p class="muted">Inserisci il codice fiscale. Il paziente potrà creare il proprio account SmartBack anche in seguito.</p>
+  <form id="patientForm">
+    <label>Codice fiscale<input id="fiscalCode" maxlength="16" required autocapitalize="characters" autocomplete="off" spellcheck="false"></label>
+    <p id="patientError" class="form-error"></p>
+    <div class="actions">
+      <button type="submit">Associa</button>
+      <button type="button" class="secondary close-dialog">Annulla</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="deviceDialog">
+  <h2>Aggiungi una maglia</h2>
+  <h3>Maglie rilevate disponibili</h3>
+  <p class="muted">Il codice tecnico viene acquisito automaticamente dai dati ricevuti.</p>
+  <form id="claimDeviceForm" class="dialog-form">
+    <label>Maglia rilevata<select id="detectedDevice" required></select></label>
+    <label>Nome maglia<input id="detectedDeviceName" placeholder="Maglia ambulatorio" required></label>
+    <p id="claimDeviceError" class="form-error"></p>
+    <div class="actions"><button id="claimDeviceButton" type="submit">Acquisisci maglia</button></div>
+  </form>
+  <hr>
+  <h3>Crea una maglia di test</h3>
+  <p class="muted">Il codice tecnico simulato viene generato automaticamente.</p>
+  <form id="deviceForm" class="dialog-form">
+    <label>Nome maglia<input id="deviceName" placeholder="Maglia test" required></label>
+    <p id="deviceError" class="form-error"></p>
+    <div class="actions">
+      <button type="submit">Crea maglia di test</button>
+      <button type="button" class="secondary close-dialog">Annulla</button>
+    </div>
+  </form>
+</dialog>
+<script src="/smartback-static/medical-portal.js" defer></script>
+</body>
+</html>

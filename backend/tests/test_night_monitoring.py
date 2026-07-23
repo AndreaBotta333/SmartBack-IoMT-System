@@ -4,8 +4,8 @@ import unittest
 
 from fastapi import HTTPException
 
-from app import main as main_module
-from app.database import init_database
+from app import bootstrap as main_module
+from app.infrastructure.database import init_database
 
 
 class FakeMqttHandler:

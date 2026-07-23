@@ -1,11 +1,12 @@
 import os
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
 
-from app import main as main_module
-from app.database import init_database
+from app import bootstrap as main_module
+from app.infrastructure.database import init_database
 
 
 class PatientAccountClaimTests(unittest.TestCase):
@@ -212,6 +213,56 @@ class PatientAccountClaimTests(unittest.TestCase):
         after = main_module.medical_portal_data(doctor)
         self.assertEqual(after["discovered_devices"], [])
         self.assertEqual(after["devices"][0]["device_id"], "tshirt-detected")
+
+    def test_portal_connection_status_expires_when_telemetry_stops(self) -> None:
+        doctor = self.database.execute(
+            "SELECT * FROM users WHERE id='doctor-1'"
+        ).fetchone()
+        current = datetime.now(timezone.utc)
+        self.database.execute(
+            "INSERT INTO devices("
+            "device_id,display_name,owner_doctor_id,doctor_device_number,"
+            "source_type,first_seen_at,last_seen_at,quality,has_telemetry"
+            ") VALUES (?,?,?,?,?,?,?,?,?)",
+            (
+                "fresh-shirt",
+                "Maglia recente",
+                "doctor-1",
+                0,
+                "physical",
+                current.isoformat(),
+                current.isoformat(),
+                "measured",
+                1,
+            ),
+        )
+        self.database.execute(
+            "INSERT INTO devices("
+            "device_id,display_name,owner_doctor_id,doctor_device_number,"
+            "source_type,first_seen_at,last_seen_at,quality,has_telemetry"
+            ") VALUES (?,?,?,?,?,?,?,?,?)",
+            (
+                "stale-shirt",
+                "Maglia ferma",
+                "doctor-1",
+                1,
+                "physical",
+                current.isoformat(),
+                (current - timedelta(seconds=main_module.DATA_STALE_SECONDS + 1)).isoformat(),
+                "measured",
+                1,
+            ),
+        )
+        self.database.commit()
+
+        devices = {
+            item["device_id"]: item
+            for item in main_module.medical_portal_data(doctor)["devices"]
+        }
+        self.assertTrue(devices["fresh-shirt"]["has_telemetry"])
+        self.assertTrue(devices["fresh-shirt"]["connected"])
+        self.assertTrue(devices["stale-shirt"]["has_telemetry"])
+        self.assertFalse(devices["stale-shirt"]["connected"])
 
 
 if __name__ == "__main__":

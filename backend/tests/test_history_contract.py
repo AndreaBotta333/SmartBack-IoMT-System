@@ -4,9 +4,13 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
 
-from app import main as main_module
-from app.influx_manager import InfluxManager
-from app.main import GrafanaLoginRequest, accessible_patient, normalize_history_range
+from app import bootstrap as main_module
+from app.infrastructure.influx import InfluxManager
+from app.bootstrap import (
+    GrafanaLoginRequest,
+    accessible_patient,
+    normalize_history_range,
+)
 
 
 class GrafanaLoginContractTests(unittest.TestCase):

@@ -1,11 +1,12 @@
 import os
+import json
 import sqlite3
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
-from app.database import init_database
-from app.mqtt_handler import SmartBackMqttHandler
+from app.infrastructure.database import init_database
+from app.infrastructure.mqtt import SmartBackMqttHandler
 
 
 class DeviceAssignmentSchemaTests(unittest.TestCase):
@@ -86,6 +87,42 @@ class DeviceAssignmentSchemaTests(unittest.TestCase):
 
 
 class RawSmartShirtDiscoveryTests(unittest.TestCase):
+    def test_mqtt_reconnect_activates_only_assigned_simulated_shirts(self) -> None:
+        handler = SmartBackMqttHandler(
+            host="mosquitto",
+            port=1883,
+            posture_topic="smartback/normalized/posture",
+            device_topic="smartback/normalized/device",
+            alert_topic="smartback/alerts/posture",
+            stale_seconds=10,
+            posture_engine=Mock(),
+            influx=Mock(),
+            broadcast=Mock(),
+            assignment_provider=lambda: [
+                {"device_id": "sim-assigned", "patient_id": "patient-a"}
+            ],
+            simulated_device_provider=lambda: [
+                "sim-assigned",
+                "sim-available",
+            ],
+        )
+        handler.publish_device_assignment = Mock()
+        handler.publish_simulated_device = Mock()
+        client = Mock()
+
+        handler._on_connect(client, None, None, 0, None)
+
+        handler.publish_device_assignment.assert_called_once_with(
+            "sim-assigned", "patient-a"
+        )
+        self.assertEqual(
+            handler.publish_simulated_device.call_args_list,
+            [
+                call("sim-assigned", active=True),
+                call("sim-available", active=False),
+            ],
+        )
+
     def test_unsupported_packet_still_marks_physical_shirt_as_seen(self) -> None:
         seen = Mock()
         handler = SmartBackMqttHandler(
@@ -107,6 +144,38 @@ class RawSmartShirtDiscoveryTests(unittest.TestCase):
         handler._on_message(Mock(), None, message)
 
         seen.assert_called_once_with("tshirt002", "measured")
+
+    def test_retained_battery_snapshot_does_not_mark_shirt_online(self) -> None:
+        seen = Mock()
+        handler = SmartBackMqttHandler(
+            host="mosquitto",
+            port=1883,
+            posture_topic="smartback/normalized/posture",
+            device_topic="smartback/normalized/device",
+            alert_topic="smartback/alerts/posture",
+            stale_seconds=10,
+            posture_engine=Mock(),
+            influx=Mock(),
+            broadcast=Mock(),
+            device_seen=seen,
+        )
+        message = Mock()
+        message.topic = "smartback/normalized/device"
+        message.retain = True
+        message.payload = json.dumps({
+            "schema_version": 1,
+            "device_id": "tshirt002",
+            "patient_id": "patient-a",
+            "timestamp": 1784780000000,
+            "type": "battery",
+            "state_of_charge": 80,
+            "charging": False,
+            "quality": "measured",
+        }).encode()
+
+        handler._on_message(Mock(), None, message)
+
+        seen.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ from typing import Any
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
 
-from app.posture_service import ThresholdProfile
+from app.domain.posture import ThresholdProfile
 
 
 class InfluxManager:
