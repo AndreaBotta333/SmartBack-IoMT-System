@@ -1,4 +1,4 @@
-"""Delivery of SmartBack notifications through the Expo Push Service."""
+"""Invio delle notifiche SmartBack tramite Expo Push Service."""
 
 import json
 import time
@@ -11,7 +11,7 @@ EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 
 
 def notification_for_alert(alert: dict[str, Any]) -> dict[str, Any] | None:
-    """Translate actionable backend alerts into concise Italian notifications."""
+    """Traduce gli alert rilevanti in notifiche italiane concise."""
     code = str(alert.get("code") or "")
     if not bool(alert.get("active", True)):
         return None
@@ -61,7 +61,7 @@ def notification_for_alert(alert: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def send_expo_push(tokens: list[str], notification: dict[str, Any], attempts: int = 8) -> int:
-    """Submit messages, retrying temporary DNS/network failures."""
+    """Invia i messaggi ritentando gli errori temporanei DNS o di rete."""
     if not tokens:
         return 0
     messages = [{"to": token, **notification} for token in tokens]

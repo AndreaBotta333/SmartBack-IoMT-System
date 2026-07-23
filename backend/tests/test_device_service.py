@@ -1,3 +1,5 @@
+"""Test dei casi d'uso per inventario e assegnazione dei dispositivi."""
+
 import os
 import tempfile
 import threading

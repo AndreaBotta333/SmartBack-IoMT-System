@@ -1,3 +1,5 @@
+"""Test del contratto condiviso per gli storici diurni e gli alert."""
+
 import unittest
 import sqlite3
 from datetime import datetime, timedelta, timezone

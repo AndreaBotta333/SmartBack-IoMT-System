@@ -1,3 +1,5 @@
+"""Test di persistenza e pubblicazione delle assegnazioni delle maglie."""
+
 import os
 import json
 import sqlite3

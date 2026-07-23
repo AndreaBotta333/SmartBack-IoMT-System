@@ -1,3 +1,10 @@
+"""Composizione finale e bootstrap compatibile dell'applicazione SmartBack.
+
+Il modulo collega configurazione, infrastrutture, servizi ed endpoint, mantenendo
+gli alias pubblici richiesti dai test e dai client esistenti. L'entrypoint ASGI
+rimane nel modulo pubblico ``main``.
+"""
+
 import asyncio
 import sqlite3
 import threading

@@ -1,4 +1,4 @@
-"""MQTT ingestion, realtime state, alert publication and stream watchdog."""
+"""Ingestione MQTT, stato realtime, pubblicazione alert e controllo del flusso."""
 
 import asyncio
 import json
@@ -121,7 +121,7 @@ class SmartBackMqttHandler:
     def calibrate_from_sample(
         self, device_id: str, sample: dict[str, Any]
     ) -> dict[str, float | str]:
-        """Apply an immutable sample captured before a later confirmation."""
+        """Applica un campione immutabile acquisito prima della conferma."""
         if sample.get("device_id") != device_id:
             raise LookupError("The captured sample does not belong to this device")
         return self.posture_engine.calibrate(device_id, dict(sample))
@@ -203,7 +203,7 @@ class SmartBackMqttHandler:
         )
 
     def publish_simulation_scenario(self, device_id: str, scenario: str) -> None:
-        """Switch only the development emulator; physical shirts ignore this topic."""
+        """Commuta solo l'emulatore; le maglie fisiche ignorano questo topic."""
         if self._client is None:
             return
         self._client.publish(
@@ -221,10 +221,11 @@ class SmartBackMqttHandler:
                 and topic_parts[0] == "unisadiem"
                 and topic_parts[1] == "smartshirt"
             ):
-                # Discovery is intentionally independent from posture ingestion:
-                # even packets we do not process (for example ECG and strain
-                # gauges) prove that the physical shirt is online. Throttle the
-                # durable update because those streams can be very frequent.
+                # Il rilevamento è intenzionalmente indipendente dall'ingestione
+                # posturale: anche i pacchetti non elaborati, come ECG e sensori
+                # di deformazione, dimostrano che la maglia fisica è online.
+                # L'aggiornamento persistente è limitato perché questi flussi
+                # possono essere molto frequenti.
                 device_id = topic_parts[2].strip()
                 now = time.monotonic()
                 last_seen = self._last_raw_device_seen.get(device_id, 0.0)
@@ -245,8 +246,9 @@ class SmartBackMqttHandler:
                     else None
                 )
                 if night_sample is not None:
-                    # Daytime posture and night orientation are mutually exclusive.
-                    # Stop feeding live/day history while the patient selected night mode.
+                    # Postura diurna e orientamento notturno sono mutuamente
+                    # esclusivi: non alimentare live e storico diurni quando il
+                    # paziente ha selezionato la modalità notte.
                     with self._lock:
                         self._latest_posture = None
                     if self._loop:
@@ -267,8 +269,8 @@ class SmartBackMqttHandler:
                         asyncio.run_coroutine_threadsafe(self.broadcast(processed), self._loop)
             elif message.topic == self.device_topic:
                 payload = NormalizedDeviceStatus.model_validate(raw_payload).model_dump()
-                # A retained battery snapshot is inventory/history, not proof
-                # that the shirt is currently transmitting.
+                # Un valore retained della batteria appartiene a inventario e
+                # storico, ma non prova che la maglia stia trasmettendo ora.
                 if self.device_seen and not message.retain:
                     self.device_seen(str(payload["device_id"]), str(payload["quality"]))
                 with self._lock:
@@ -302,7 +304,7 @@ class SmartBackMqttHandler:
 
     @staticmethod
     def _new_session_id() -> str:
-        """Return a sortable identifier representing the session start instant."""
+        """Restituisce un identificatore ordinabile dell'inizio sessione."""
         return (
             datetime.now(timezone.utc)
             .isoformat(timespec="milliseconds")

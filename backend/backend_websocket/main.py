@@ -1,3 +1,5 @@
+"""Server WebSocket dimostrativo per la generazione di dati posturali sintetici."""
+
 import asyncio
 import math
 import random

@@ -1,3 +1,5 @@
+"""Test dei confini architetturali e delle dipendenze tra livelli."""
+
 import ast
 import unittest
 from pathlib import Path

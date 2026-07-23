@@ -1,3 +1,5 @@
+"""Casi d'uso per anagrafica e associazione medico-paziente."""
+
 import secrets
 import sqlite3
 from datetime import datetime, timezone

@@ -1,3 +1,5 @@
+"""Query aggregate dedicate alla Home e al portale medico."""
+
 import sqlite3
 
 

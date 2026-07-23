@@ -1,3 +1,5 @@
+"""Test della creazione e propagazione delle sessioni diurne."""
+
 import json
 import unittest
 

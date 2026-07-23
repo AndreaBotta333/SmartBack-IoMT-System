@@ -1,4 +1,4 @@
-"""Print SmartBack MQTT traffic to verify a simulator or physical gateway."""
+"""Mostra il traffico MQTT SmartBack per verificare simulatore o gateway fisico."""
 
 import json
 import os

@@ -1,3 +1,5 @@
+"""Test delle statistiche e dello storico del monitoraggio diurno."""
+
 import unittest
 from unittest.mock import Mock
 

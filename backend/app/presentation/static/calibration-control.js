@@ -1,3 +1,4 @@
+// Gestisce acquisizione live e inserimento manuale della calibrazione.
 const endpoint = `/api/v1/grafana/patients/${encodeURIComponent(document.body.dataset.patient)}`;
 
 async function errorMessage(response) {

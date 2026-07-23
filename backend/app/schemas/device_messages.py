@@ -1,7 +1,7 @@
 """Messaggi validati al confine Node-RED -> FastAPI.
 
-The physical gateway and simulator may emit different raw packets. Node-RED is
-responsible for mapping them to these stable normalized messages.
+Il gateway fisico e il simulatore possono emettere pacchetti raw differenti.
+Node-RED li converte in questi messaggi normalizzati e stabili.
 """
 
 from typing import Literal

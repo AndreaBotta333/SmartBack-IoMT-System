@@ -1,3 +1,5 @@
+"""Controllo applicativo dell'accesso ai dati dei pazienti."""
+
 import sqlite3
 
 from app.repositories.identity_repository import IdentityRepository

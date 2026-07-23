@@ -1,3 +1,5 @@
+"""Test del coordinamento tra telemetria MQTT e stato persistente."""
+
 import tempfile
 import threading
 import unittest

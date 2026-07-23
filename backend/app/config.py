@@ -1,4 +1,4 @@
-"""Centralized runtime configuration for the SmartBack backend."""
+"""Configurazione runtime centralizzata del backend SmartBack."""
 
 import os
 
@@ -14,7 +14,7 @@ INFLUX_TOKEN = os.getenv("INFLUXDB_TOKEN", "")
 INFLUX_ORG = os.getenv("INFLUXDB_ORG", "smartback")
 INFLUX_BUCKET = os.getenv("INFLUXDB_BUCKET", "posture")
 
-# Demonstration defaults, not clinical thresholds. They will become configurable.
+# Valori dimostrativi predefiniti, non soglie cliniche; saranno configurabili.
 MODERATE_DEVIATION_DEG = float(os.getenv("MODERATE_DEVIATION_DEG", "10"))
 MARKED_DEVIATION_DEG = float(os.getenv("MARKED_DEVIATION_DEG", "20"))
 MODERATE_ROLL_DEG = float(os.getenv("MODERATE_ROLL_DEG", "10"))

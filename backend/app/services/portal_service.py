@@ -1,3 +1,5 @@
+"""Composizione dei dati necessari alla Home del portale medico."""
+
 import sqlite3
 from typing import Any, Callable
 

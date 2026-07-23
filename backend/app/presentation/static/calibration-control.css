@@ -1,3 +1,4 @@
+/* Stili del pannello Grafana per calibrazione live e manuale. */
 main{min-height:148px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;align-items:stretch;padding:10px}
 .cell{min-width:0;border:1px solid #34373d;border-radius:10px;background:#181b1f;padding:14px;display:flex;flex-direction:column;justify-content:center}
 label{display:block;margin-bottom:8px;color:#c7c9d1;font-weight:700}

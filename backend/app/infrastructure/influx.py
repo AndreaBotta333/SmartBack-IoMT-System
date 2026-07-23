@@ -1,4 +1,4 @@
-"""InfluxDB persistence and query operations."""
+"""Persistenza e interrogazioni delle serie temporali in InfluxDB."""
 
 import math
 from datetime import datetime, timedelta, timezone
@@ -60,7 +60,7 @@ class InfluxManager:
         self.write_api.write(bucket=self.bucket, org=self.org, record=point)
 
     def query_day_sessions(self, patient_code: str) -> list[dict[str, str]]:
-        """Return daytime telemetry sessions with their first and last samples."""
+        """Restituisce le sessioni diurne con il primo e l'ultimo campione."""
         safe_patient = self._flux_string(patient_code)
         base = f'''from(bucket: "{self.bucket}")
   |> range(start: 0)
@@ -122,7 +122,7 @@ class InfluxManager:
         device_id: str,
         active: bool,
     ) -> None:
-        """Persist the current night-session state used by live Grafana panels."""
+        """Salva lo stato notturno corrente usato dai pannelli live di Grafana."""
         point = (
             Point("night_session_state")
             .tag("session_id", session_id)
@@ -165,7 +165,7 @@ class InfluxManager:
         selected_pitch_deg: float,
         selected_roll_deg: float,
     ) -> None:
-        """Write the selected reference immediately, independently of the next sample."""
+        """Salva subito il riferimento scelto, senza attendere il campione seguente."""
         point = (
             Point("posture")
             .tag("device_id", device_id)
@@ -242,7 +242,7 @@ class InfluxManager:
         limit: int = 600,
         stale_seconds: float = 10,
     ) -> dict[str, Any]:
-        """Return the shared persistent history contract used by app and Grafana."""
+        """Restituisce lo storico persistente condiviso da app e Grafana."""
         limit = min(max(limit, 10), 1200)
         duration_seconds = max(1, int((end - start).total_seconds()))
         window_seconds = max(1, math.ceil(duration_seconds / min(limit, 600)))
@@ -414,7 +414,7 @@ union(tables: [firstSample, lastSample])'''
         return alerts[:limit]
 
     def query_alert_session_ids(self, patient_code: str) -> list[str]:
-        """Return every alert session available for a patient, newest first."""
+        """Restituisce le sessioni di alert del paziente, dalla più recente."""
         safe_patient = self._flux_string(patient_code)
         query = f'''import "influxdata/influxdb/schema"
 schema.tagValues(
@@ -436,7 +436,7 @@ schema.tagValues(
     def group_alerts_by_session(
         alerts: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        """Group interval-filtered alerts without discarding legacy records."""
+        """Raggruppa gli alert dell'intervallo senza scartare i record legacy."""
         grouped: dict[str, list[dict[str, Any]]] = {}
         for alert in alerts:
             session_id = str(alert.get("session_id") or "legacy")

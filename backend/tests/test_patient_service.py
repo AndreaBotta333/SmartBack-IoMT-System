@@ -1,3 +1,5 @@
+"""Test dei casi d'uso per associazione e gestione dei pazienti."""
+
 import unittest
 from unittest.mock import Mock
 

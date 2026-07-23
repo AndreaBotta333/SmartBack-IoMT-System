@@ -1,3 +1,5 @@
+"""Persistenza di utenti, identità, sessioni e credenziali applicative."""
+
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path

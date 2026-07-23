@@ -1,3 +1,5 @@
+"""Casi d'uso per registrazione dei token e invio delle notifiche push."""
+
 import asyncio
 import secrets
 from typing import Any, Callable

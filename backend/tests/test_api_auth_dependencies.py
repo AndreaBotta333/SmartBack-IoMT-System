@@ -1,3 +1,5 @@
+"""Test delle dipendenze FastAPI per autenticazione e autorizzazione."""
+
 import unittest
 
 from fastapi import HTTPException

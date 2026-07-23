@@ -1,3 +1,5 @@
+"""Test del collegamento tra anagrafica clinica e account del paziente."""
+
 import os
 import tempfile
 import unittest

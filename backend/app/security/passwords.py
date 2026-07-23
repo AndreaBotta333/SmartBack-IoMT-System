@@ -1,3 +1,5 @@
+"""Derivazione sicura delle password con PBKDF2 e salt casuale."""
+
 import hashlib
 import secrets
 

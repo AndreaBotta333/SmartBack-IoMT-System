@@ -1,3 +1,5 @@
+"""Test del rendering dei template e degli asset del portale medico."""
+
 from pathlib import Path
 import unittest
 

@@ -1,3 +1,5 @@
+"""Traduzione centralizzata degli errori applicativi in risposte HTTP italiane."""
+
 from dataclasses import dataclass
 from functools import wraps
 from typing import Type

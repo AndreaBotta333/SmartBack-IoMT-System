@@ -1,3 +1,4 @@
+// Gestisce la conferma protetta della calibrazione posturale.
 const patient = document.body.dataset.patient;
 const acknowledgement = document.getElementById("ack");
 const confirmButton = document.getElementById("confirm");

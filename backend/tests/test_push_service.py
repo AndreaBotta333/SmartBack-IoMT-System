@@ -1,3 +1,5 @@
+"""Test della traduzione e dell'invio degli alert come notifiche push."""
+
 import unittest
 import urllib.error
 from unittest.mock import MagicMock, patch

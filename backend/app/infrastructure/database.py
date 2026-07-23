@@ -1,4 +1,4 @@
-"""SQLite initialization and lightweight schema migrations."""
+"""Inizializzazione SQLite e migrazioni leggere dello schema."""
 
 import os
 import sqlite3

@@ -1,3 +1,5 @@
+"""Test dell'instradamento dei dati sulle connessioni WebSocket realtime."""
+
 import asyncio
 import unittest
 

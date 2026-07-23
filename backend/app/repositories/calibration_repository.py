@@ -1,3 +1,5 @@
+"""Persistenza SQLite dei riferimenti di calibrazione posturale."""
+
 import sqlite3
 import threading
 from datetime import datetime, timezone

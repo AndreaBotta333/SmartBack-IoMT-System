@@ -1,3 +1,4 @@
+// Filtra e seleziona le sessioni mostrate nelle dashboard storiche.
 const main = document.querySelector("main");
 const select = document.getElementById("sessions");
 const search = document.getElementById("search");

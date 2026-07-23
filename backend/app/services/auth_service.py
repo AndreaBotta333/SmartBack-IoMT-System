@@ -1,3 +1,5 @@
+"""Casi d'uso di autenticazione, registrazione e gestione dell'account."""
+
 import hmac
 import secrets
 import sqlite3

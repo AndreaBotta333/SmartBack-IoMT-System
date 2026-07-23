@@ -1,1 +1,1 @@
-"""HTTP and WebSocket routing for SmartBack."""
+"""Instradamento HTTP e WebSocket del backend SmartBack."""

@@ -1,3 +1,5 @@
+"""Test della calibrazione posturale live e manuale."""
+
 import unittest
 from datetime import datetime, timezone
 from unittest.mock import Mock

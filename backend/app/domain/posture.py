@@ -1,4 +1,4 @@
-"""Posture calculation, smoothing, calibration and threshold evaluation."""
+"""Calcolo posturale, smoothing, calibrazione e valutazione delle soglie."""
 
 import math
 import threading
@@ -16,7 +16,7 @@ class ThresholdProfile:
 
     def as_dict(self) -> dict[str, float]:
         return {
-            # Legacy aliases consumed by the current mobile app.
+            # Alias legacy ancora utilizzati dall'app mobile corrente.
             "moderate_deviation_deg": self.pitch_moderate_deg,
             "marked_deviation_deg": self.pitch_marked_deg,
             "moderate_pitch_deg": self.pitch_moderate_deg,
@@ -201,7 +201,7 @@ class PostureEngine:
                 "reference_roll_deg": round(state.reference_roll_deg, 2),
                 "pitch_deviation_deg": round(pitch_deviation, 2),
                 "roll_deviation_deg": round(roll_deviation, 2),
-                # Backward-compatible dominant deviation used by the current app.
+                # Deviazione dominante retrocompatibile usata dall'app corrente.
                 "deviation_deg": round(dominant_deviation, 2),
                 "dominant_axis": dominant_axis,
                 "pitch_status": self._axis_label(state.pitch),

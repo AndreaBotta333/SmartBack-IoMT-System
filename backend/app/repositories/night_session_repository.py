@@ -1,3 +1,5 @@
+"""Persistenza SQLite delle sessioni di monitoraggio notturno."""
+
 import sqlite3
 import threading
 from datetime import datetime, timezone

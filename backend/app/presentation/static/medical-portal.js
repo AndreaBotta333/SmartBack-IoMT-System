@@ -1,3 +1,4 @@
+// Gestisce pazienti, inventario maglie e assegnazioni nella Home medica.
 const esc = (value) => String(value ?? "").replace(
   /[&<>"']/g,
   (character) => ({

@@ -1,3 +1,5 @@
+"""Persistenza dei destinatari e dei token per le notifiche push."""
+
 import sqlite3
 import threading
 from datetime import datetime, timezone

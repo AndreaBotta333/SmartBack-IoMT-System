@@ -1,8 +1,9 @@
-"""Domain routers and OpenAPI sections.
+"""Router dei domini applicativi e relative sezioni OpenAPI.
 
-Routers deliberately keep their complete public paths in the endpoint modules.
-This makes the separation internal and documentary without changing the API
-contract already consumed by the mobile app, Grafana, and device services.
+I router mantengono intenzionalmente i percorsi pubblici completi nei moduli
+degli endpoint. La separazione rimane così interna e documentale, senza
+modificare il contratto API già usato dall'app mobile, da Grafana e dai servizi
+dei dispositivi.
 """
 
 from fastapi import APIRouter

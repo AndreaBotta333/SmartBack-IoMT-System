@@ -1,3 +1,5 @@
+"""Test del motore di classificazione delle posizioni notturne."""
+
 import unittest
 
 from app.domain.night import NightPositionEngine

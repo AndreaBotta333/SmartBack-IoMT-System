@@ -1,3 +1,4 @@
+/* Stili del controllo incorporato per la modalità di monitoraggio notturno. */
 body{background:#181b1f}
 main{min-height:86px;display:flex;align-items:center;justify-content:center;padding:14px 20px}
 button{min-width:270px;padding:14px 22px;border:0;border-radius:9px;color:#fff;font-weight:800;font-size:16px;cursor:pointer;white-space:nowrap}

@@ -1,4 +1,4 @@
-"""Night-position classification independent from daytime posture thresholds."""
+"""Classificazione delle posizioni notturne indipendente dalle soglie diurne."""
 
 import math
 import threading
@@ -23,11 +23,11 @@ class NightState:
 
 
 class NightPositionEngine:
-    """Classify recumbent orientation from the normalized gravity vector.
+    """Classifica l'orientamento disteso dal vettore di gravità normalizzato.
 
-    The default axis mapping follows the mounting already emulated by the
-    project simulator. Its signs must be confirmed once against the physical
-    shirt before clinical interpretation.
+    La mappatura predefinita degli assi segue il montaggio già emulato dal
+    simulatore del progetto. I versi devono essere confermati una volta sulla
+    maglia fisica prima di qualsiasi interpretazione clinica.
     """
 
     CLASSIFIER_VERSION = 1

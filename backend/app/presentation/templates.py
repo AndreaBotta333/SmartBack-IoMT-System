@@ -1,3 +1,5 @@
+"""Caricamento sicuro e rendering dei template HTML del portale medico."""
+
 from functools import lru_cache
 from pathlib import Path
 from string import Template

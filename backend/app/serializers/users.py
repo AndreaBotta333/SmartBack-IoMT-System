@@ -1,3 +1,5 @@
+"""Serializzazione dei dati utente esponibili tramite le API."""
+
 import sqlite3
 from typing import Any
 

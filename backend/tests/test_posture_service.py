@@ -1,3 +1,5 @@
+"""Test del calcolo posturale, delle soglie e degli alert di deviazione."""
+
 import math
 import unittest
 

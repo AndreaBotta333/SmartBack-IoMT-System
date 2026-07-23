@@ -1,3 +1,4 @@
+// Sincronizza stato e comandi della modalità notte con il backend.
 const body = document.body;
 const form = document.getElementById("night-form");
 const patient = body.dataset.patient;

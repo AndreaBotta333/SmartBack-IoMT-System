@@ -1,3 +1,5 @@
+"""Test dei casi d'uso del servizio di autenticazione."""
+
 import unittest
 from unittest.mock import Mock
 

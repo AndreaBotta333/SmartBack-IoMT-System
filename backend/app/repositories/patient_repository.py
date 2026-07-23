@@ -1,3 +1,5 @@
+"""Persistenza dell'anagrafica pazienti e delle associazioni con i medici."""
+
 import sqlite3
 import threading
 from datetime import datetime, timezone

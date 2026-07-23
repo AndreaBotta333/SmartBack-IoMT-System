@@ -1,3 +1,4 @@
+# Immagine di esecuzione del backend FastAPI SmartBack.
 FROM python:3.12-slim
 
 WORKDIR /app

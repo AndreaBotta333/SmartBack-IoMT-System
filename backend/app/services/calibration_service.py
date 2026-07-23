@@ -1,3 +1,5 @@
+"""Casi d'uso per calibrazione live e calibrazione manuale."""
+
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
