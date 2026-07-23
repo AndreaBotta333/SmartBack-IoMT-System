@@ -47,7 +47,10 @@ services:
       retries: 10
 
   nodered:
-    image: nodered/node-red:latest
+    build:
+      context: ./nodered/smartback
+      dockerfile: Dockerfile
+    image: smartback-nodered:latest
     container_name: smartback-nodered
     restart: unless-stopped
     ports:

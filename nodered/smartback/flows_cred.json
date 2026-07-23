@@ -1,0 +1,5 @@
+{
+  "cfg-smartback-influxdb": {
+    "token": "${INFLUXDB_TOKEN}"
+  }
+}

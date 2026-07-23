@@ -242,7 +242,8 @@ mobile/app/.claude/
 /nodered/smartback/.npm/
 /nodered/smartback/.config.*
 /nodered/smartback/*.backup
-/nodered/smartback/flows_cred.json
+# Il file versionato contiene esclusivamente il riferimento ${INFLUXDB_TOKEN}.
+!/nodered/smartback/flows_cred.json
 
 # Database, log e cache generati localmente
 *.db

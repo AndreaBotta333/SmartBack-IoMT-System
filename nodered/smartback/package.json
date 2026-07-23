@@ -2,5 +2,8 @@
   "name": "smartback-nodered",
   "version": "0.1.0",
   "private": true,
-  "description": "SmartBack MQTT ingestion and routing flows"
+  "description": "SmartBack MQTT ingestion and routing flows",
+  "dependencies": {
+    "node-red-contrib-influxdb": "0.7.0"
+  }
 }
