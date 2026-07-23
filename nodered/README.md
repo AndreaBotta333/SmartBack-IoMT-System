@@ -4,6 +4,9 @@ Docker utilizza esclusivamente `nodered/smartback` come directory `/data`.
 La cartella `nodered/data` è materiale locale storico e non viene caricata
 dallo stack.
 
+La descrizione nodo per nodo dell'intero flow è disponibile in
+[`docs/NODERED_FLOW_REFERENCE.md`](../docs/NODERED_FLOW_REFERENCE.md).
+
 ## Organizzazione del flow
 
 Il tab `SmartBack shirt ingestion` è suddiviso in quattro corsie:
