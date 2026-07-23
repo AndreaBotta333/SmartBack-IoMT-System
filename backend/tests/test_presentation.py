@@ -57,6 +57,19 @@ class PresentationTemplateTests(unittest.TestCase):
         for marker in ("<!doctype", "<html", "<style", "<script", "style="):
             self.assertNotIn(marker, main_source)
 
+    def test_home_preserves_selected_shirt_during_refresh(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "app"
+            / "presentation"
+            / "static"
+            / "medical-portal.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("const selectedShirts = new Map()", script)
+        self.assertIn('localeCompare(', script)
+        self.assertIn("patient.assigned_device_name", script)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -103,8 +103,23 @@ class IdentityRepository:
         self.database.commit()
 
     def user_for_session(self, token: str) -> sqlite3.Row | None:
-        database = self.database.execute("PRAGMA database_list").fetchone()
-        database_path = str(database["file"] or self.fallback_path)
+        try:
+            database = self.database.execute("PRAGMA database_list").fetchone()
+            database_path = str(
+                database["file"] if database and database["file"]
+                else self.fallback_path
+            )
+        except sqlite3.ProgrammingError:
+            # Durante un reload Uvicorn una richiesta già avviata può vedere
+            # la connessione condivisa appena chiusa. Il file persistente resta
+            # comunque disponibile e può essere interrogato in sicurezza.
+            database_path = self.fallback_path
+        if database_path == ":memory:":
+            return self.database.execute(
+                "SELECT users.* FROM sessions JOIN users "
+                "ON users.id=sessions.user_id WHERE sessions.token=?",
+                (token,),
+            ).fetchone()
         with sqlite3.connect(Path(database_path)) as connection:
             connection.row_factory = sqlite3.Row
             return connection.execute(

@@ -27,6 +27,11 @@ class PortalService:
                 **self.user_serializer(row),
                 "associated_at": row["associated_at"],
                 "assigned_device": row["assigned_device"],
+                "assigned_device_name": (
+                    row["assigned_device_name"] or row["assigned_device"]
+                    if row["assigned_device"] is not None
+                    else None
+                ),
             }
             for row in patients
         ]

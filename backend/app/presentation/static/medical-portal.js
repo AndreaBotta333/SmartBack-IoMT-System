@@ -11,6 +11,7 @@ const esc = (value) => String(value ?? "").replace(
 );
 
 let state = {patients: [], devices: [], discovered_devices: [], summary: {}};
+const selectedShirts = new Map();
 const patientDialog = document.getElementById("patientDialog");
 const deviceDialog = document.getElementById("deviceDialog");
 const patientError = document.getElementById("patientError");
@@ -48,13 +49,27 @@ async function load() {
 
 function patientCard(patient) {
   const code = encodeURIComponent(patient.patient_code);
-  const free = state.devices.filter((device) => device.available);
+  const free = state.devices
+    .filter((device) => device.available)
+    .sort((left, right) => left.display_name.localeCompare(
+      right.display_name,
+      "it",
+      {sensitivity: "base", numeric: true},
+    ));
   const assigned = Boolean(patient.assigned_device);
   const canAssign = !assigned && free.length > 0;
+  const selectedDevice = selectedShirts.get(patient.id);
+  if (selectedDevice && !free.some((device) => device.device_id === selectedDevice)) {
+    selectedShirts.delete(patient.id);
+  }
   const shirtOptions = assigned
     ? "<option>Maglia già associata</option>"
     : free.length
-      ? free.map((device) => `<option value="${esc(device.device_id)}">${esc(device.display_name)}</option>`).join("")
+      ? free.map((device) => (
+        `<option value="${esc(device.device_id)}" ${
+          device.device_id === selectedShirts.get(patient.id) ? "selected" : ""
+        }>${esc(device.display_name)}</option>`
+      )).join("")
       : "<option>Nessuna maglia disponibile</option>";
   const shirtAction = assigned
     ? `<button class="danger" onclick="releaseShirt('${esc(patient.assigned_device)}')">Libera maglia</button>`
@@ -63,7 +78,7 @@ function patientCard(patient) {
     <h3>${esc(patient.name)}</h3>
     <div class="muted">${esc(patient.fiscal_code)}</div>
     <p><span class="badge ${patient.account_registered ? "available" : ""}">${patient.account_registered ? "Account registrato" : "Account non registrato"}</span>
-    ${assigned ? `<span class="badge assigned">Maglia ${esc(patient.assigned_device)}</span>` : '<span class="badge">Nessuna maglia</span>'}</p>
+    ${assigned ? `<span class="badge assigned">${esc(patient.assigned_device_name || "Maglia associata")}</span>` : '<span class="badge">Nessuna maglia</span>'}</p>
     <div class="actions">
       <a class="button day-button" href="/grafana/d/smartback-overview/smartback-monitoraggio-paziente?var-patient_id=${code}&refresh=1s">DIURNO</a>
       <a class="button day-button" href="/grafana/d/smartback-history/smartback-storico-paziente?var-patient_id=${code}">STORICO D</a>
@@ -71,7 +86,7 @@ function patientCard(patient) {
       <a class="button night-button" href="/grafana/d/smartback-night-history/smartback-storico-notturno?var-patient_id=${code}">STORICO N</a>
     </div>
     <div class="patient-controls">
-      <select class="shirt-select" id="shirt-${esc(patient.id)}" aria-label="Maglia da associare a ${esc(patient.name)}" ${canAssign ? "" : "disabled"}>${shirtOptions}</select>
+      <select class="shirt-select" id="shirt-${esc(patient.id)}" data-patient-id="${esc(patient.id)}" aria-label="Maglia da associare a ${esc(patient.name)}" ${canAssign ? "" : "disabled"}>${shirtOptions}</select>
       <div class="actions">${shirtAction}<button class="danger" onclick="removePatient('${esc(patient.patient_code)}','${esc(patient.name)}')">Rimuovi paziente</button></div>
     </div>
   </article>`;
@@ -106,6 +121,11 @@ function render() {
   document.getElementById("devices").innerHTML = state.devices.length
     ? state.devices.map(deviceCard).join("")
     : '<div class="device muted empty-state">Nessuna maglia registrata.</div>';
+  document.querySelectorAll(".shirt-select[data-patient-id]").forEach((select) => {
+    select.addEventListener("change", () => {
+      selectedShirts.set(select.dataset.patientId, select.value);
+    });
+  });
 
   const detected = state.discovered_devices || [];
   const detectedDevice = document.getElementById("detectedDevice");
@@ -123,6 +143,7 @@ async function assign(patientId, patientCode) {
     method: "PUT",
     body: JSON.stringify({patient_code: patientCode}),
   });
+  selectedShirts.delete(patientId);
   await load();
 }
 

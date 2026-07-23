@@ -62,7 +62,11 @@ def register_grafana_page_endpoints(
     def smartback_logo():
         for candidate in logo_candidates:
             if candidate.is_file():
-                return FileResponse(candidate, media_type="image/png")
+                return FileResponse(
+                    candidate,
+                    media_type="image/png",
+                    headers={"Cache-Control": "no-store"},
+                )
         raise HTTPException(
             status_code=404,
             detail="Logo SmartBack non disponibile",

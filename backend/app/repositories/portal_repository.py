@@ -12,11 +12,13 @@ class PortalRepository:
     def patients_for_doctor(self, doctor_id: str) -> list[sqlite3.Row]:
         return self.database.execute(
             "SELECT patients.*, links.created_at AS associated_at, "
-            "assignments.device_id AS assigned_device "
+            "assignments.device_id AS assigned_device, "
+            "devices.display_name AS assigned_device_name "
             "FROM doctor_patients links "
             "JOIN users patients ON patients.id=links.patient_id "
             "LEFT JOIN device_assignments assignments "
             "ON assignments.patient_id=patients.id AND assignments.released_at IS NULL "
+            "LEFT JOIN devices ON devices.device_id=assignments.device_id "
             "WHERE links.doctor_id=? ORDER BY patients.name COLLATE NOCASE",
             (doctor_id,),
         ).fetchall()
@@ -35,7 +37,8 @@ class PortalRepository:
             "LEFT JOIN doctor_patients links ON links.patient_id=patients.id "
             "AND links.doctor_id=? "
             "WHERE devices.archived_at IS NULL AND devices.owner_doctor_id=? "
-            "ORDER BY devices.doctor_device_number",
+            "ORDER BY COALESCE(devices.display_name, devices.device_id) "
+            "COLLATE NOCASE, devices.doctor_device_number",
             (doctor_id, doctor_id),
         ).fetchall()
 

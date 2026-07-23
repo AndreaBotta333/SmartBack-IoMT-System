@@ -424,8 +424,13 @@ class SmartBackMqttHandler:
                     silent_seconds = now - last_seen
                     if silent_seconds < self.stale_seconds or device_id in self._stale_alerted:
                         continue
+                    patient_id = self._device_patient.get(device_id)
+                    if patient_id is None:
+                        # L'assegnazione può essere rimossa mentre resta ancora
+                        # un timestamp precedente nel watchdog.
+                        continue
                     self._stale_alerted.add(device_id)
-                    stale.append((device_id, self._device_patient[device_id], silent_seconds))
+                    stale.append((device_id, patient_id, silent_seconds))
             for device_id, patient_id, silent_seconds in stale:
                 self._publish_stream_alert(
                     client,
