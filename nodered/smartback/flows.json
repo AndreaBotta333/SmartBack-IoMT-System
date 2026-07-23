@@ -33,12 +33,27 @@
     "willMsg": {}
   },
   {
+    "id": "cfg-smartback-influxdb",
+    "type": "influxdb",
+    "hostname": "influxdb",
+    "port": "8086",
+    "protocol": "http",
+    "database": "smartback",
+    "name": "SmartBack · InfluxDB 2",
+    "usetls": false,
+    "tls": "",
+    "influxdbVersion": "2.0",
+    "url": "${INFLUXDB_URL}",
+    "timeout": "10",
+    "rejectUnauthorized": true
+  },
+  {
     "id": "shirt-comment",
     "type": "comment",
     "z": "smartback-tab",
     "name": "1 · CONFIGURAZIONE DISPOSITIVI",
     "info": "Il device_id viene ricavato dal topic. Il patient_id deriva dall'assegnazione medico-paziente pubblicata dal backend; SMARTSHIRT_PATIENT_ID resta solo come fallback di sviluppo.",
-    "x": 250,
+    "x": 200,
     "y": 40,
     "wires": []
   },
@@ -55,8 +70,8 @@
     "rap": true,
     "rh": 0,
     "inputs": 0,
-    "x": 180,
-    "y": 90,
+    "x": 160,
+    "y": 80,
     "wires": [
       [
         "store-device-assignment"
@@ -76,7 +91,7 @@
     "finalize": "",
     "libs": [],
     "x": 470,
-    "y": 90,
+    "y": 80,
     "wires": [
       [
         "debug-device-assignment"
@@ -96,8 +111,8 @@
     "targetType": "msg",
     "statusVal": "",
     "statusType": "auto",
-    "x": 730,
-    "y": 90,
+    "x": 740,
+    "y": 80,
     "wires": []
   },
   {
@@ -135,7 +150,9 @@
     "libs": [],
     "x": 470,
     "y": 140,
-    "wires": []
+    "wires": [
+      []
+    ]
   },
   {
     "id": "mqtt-shirt-all",
@@ -150,8 +167,8 @@
     "rap": true,
     "rh": 0,
     "inputs": 0,
-    "x": 170,
-    "y": 250,
+    "x": 160,
+    "y": 280,
     "wires": [
       [
         "json-shirt",
@@ -167,8 +184,8 @@
     "property": "payload",
     "action": "obj",
     "pretty": false,
-    "x": 410,
-    "y": 250,
+    "x": 430,
+    "y": 280,
     "wires": [
       [
         "filter-monitor-shirt",
@@ -188,8 +205,8 @@
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 640,
-    "y": 250,
+    "x": 670,
+    "y": 280,
     "wires": [
       [
         "adapt-shirt-packet"
@@ -211,8 +228,8 @@
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 900,
-    "y": 250,
+    "x": 920,
+    "y": 280,
     "wires": [
       [
         "mqtt-shirt-raw",
@@ -250,8 +267,8 @@
     "correl": "",
     "expiry": "",
     "broker": "cfg-smartback-mqtt",
-    "x": 1220,
-    "y": 210,
+    "x": 1190,
+    "y": 40,
     "wires": []
   },
   {
@@ -268,8 +285,8 @@
     "correl": "",
     "expiry": "",
     "broker": "cfg-smartback-mqtt",
-    "x": 1230,
-    "y": 260,
+    "x": 1220,
+    "y": 180,
     "wires": []
   },
   {
@@ -287,18 +304,15 @@
     "expiry": "",
     "broker": "cfg-smartback-mqtt",
     "x": 1230,
-    "y": 310,
+    "y": 280,
     "wires": []
   },
   {
     "id": "influx-write-shirt-raw",
     "type": "influxdb out",
     "z": "smartback-tab",
-    "name": "INFLUXDB · pacchetti raw",
-    "x": 1230,
-    "y": 410,
-    "wires": [],
     "influxdb": "cfg-smartback-influxdb",
+    "name": "INFLUXDB · pacchetti raw",
     "measurement": "shirt_raw",
     "precision": "ms",
     "retentionPolicy": "",
@@ -306,7 +320,10 @@
     "precisionV18FluxV20": "ms",
     "retentionPolicyV18Flux": "",
     "org": "${INFLUXDB_ORG}",
-    "bucket": "${INFLUXDB_BUCKET}"
+    "bucket": "${INFLUXDB_BUCKET}",
+    "x": 1240,
+    "y": 480,
+    "wires": []
   },
   {
     "id": "debug-shirt",
@@ -321,8 +338,8 @@
     "targetType": "msg",
     "statusVal": "",
     "statusType": "auto",
-    "x": 700,
-    "y": 490,
+    "x": 1270,
+    "y": 80,
     "wires": []
   },
   {
@@ -338,8 +355,8 @@
     "targetType": "msg",
     "statusVal": "",
     "statusType": "auto",
-    "x": 1490,
-    "y": 410,
+    "x": 1260,
+    "y": 120,
     "wires": []
   },
   {
@@ -356,7 +373,7 @@
     "statusVal": "",
     "statusType": "auto",
     "x": 170,
-    "y": 490,
+    "y": 380,
     "wires": []
   },
   {
@@ -372,8 +389,8 @@
     "targetType": "msg",
     "statusVal": "",
     "statusType": "auto",
-    "x": 430,
-    "y": 490,
+    "x": 480,
+    "y": 380,
     "wires": []
   },
   {
@@ -389,8 +406,8 @@
     "targetType": "msg",
     "statusVal": "",
     "statusType": "auto",
-    "x": 980,
-    "y": 490,
+    "x": 1290,
+    "y": 220,
     "wires": []
   },
   {
@@ -406,8 +423,8 @@
     "targetType": "msg",
     "statusVal": "",
     "statusType": "auto",
-    "x": 1230,
-    "y": 490,
+    "x": 1320,
+    "y": 320,
     "wires": []
   },
   {
@@ -416,8 +433,8 @@
     "z": "smartback-tab",
     "name": "3 · ALERT E ARCHIVIAZIONE",
     "info": "Gli alert device sono creati da Node-RED. Gli alert posturali sono creati da FastAPI quando cambia lo stato, poi gestiti e archiviati qui.",
-    "x": 230,
-    "y": 620,
+    "x": 180,
+    "y": 520,
     "wires": []
   },
   {
@@ -434,8 +451,8 @@
     "correl": "",
     "expiry": "",
     "broker": "cfg-smartback-mqtt",
-    "x": 1230,
-    "y": 680,
+    "x": 1210,
+    "y": 560,
     "wires": []
   },
   {
@@ -451,8 +468,8 @@
     "rap": true,
     "rh": 0,
     "inputs": 0,
-    "x": 160,
-    "y": 670,
+    "x": 140,
+    "y": 560,
     "wires": [
       [
         "json-alert"
@@ -467,8 +484,8 @@
     "property": "payload",
     "action": "obj",
     "pretty": false,
-    "x": 390,
-    "y": 670,
+    "x": 330,
+    "y": 560,
     "wires": [
       [
         "manage-alert"
@@ -487,8 +504,8 @@
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 630,
-    "y": 670,
+    "x": 540,
+    "y": 560,
     "wires": [
       [
         "influx-write-alert",
@@ -503,11 +520,8 @@
     "id": "influx-write-alert",
     "type": "influxdb out",
     "z": "smartback-tab",
-    "name": "INFLUXDB · alert",
-    "x": 910,
-    "y": 650,
-    "wires": [],
     "influxdb": "cfg-smartback-influxdb",
+    "name": "INFLUXDB · alert",
     "measurement": "alerts",
     "precision": "ms",
     "retentionPolicy": "",
@@ -515,7 +529,10 @@
     "precisionV18FluxV20": "ms",
     "retentionPolicyV18Flux": "",
     "org": "${INFLUXDB_ORG}",
-    "bucket": "${INFLUXDB_BUCKET}"
+    "bucket": "${INFLUXDB_BUCKET}",
+    "x": 770,
+    "y": 520,
+    "wires": []
   },
   {
     "id": "debug-alert",
@@ -530,8 +547,8 @@
     "targetType": "msg",
     "statusVal": "",
     "statusType": "auto",
-    "x": 920,
-    "y": 710,
+    "x": 760,
+    "y": 620,
     "wires": []
   },
   {
@@ -547,8 +564,8 @@
     "targetType": "msg",
     "statusVal": "",
     "statusType": "auto",
-    "x": 1160,
-    "y": 650,
+    "x": 780,
+    "y": 580,
     "wires": []
   },
   {
@@ -563,8 +580,8 @@
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 1210,
-    "y": 360,
+    "x": 1230,
+    "y": 400,
     "wires": [
       [
         "influx-write-device",
@@ -576,11 +593,8 @@
     "id": "influx-write-device",
     "type": "influxdb out",
     "z": "smartback-tab",
-    "name": "INFLUXDB · stato dispositivo",
-    "x": 1490,
-    "y": 360,
-    "wires": [],
     "influxdb": "cfg-smartback-influxdb",
+    "name": "INFLUXDB · stato dispositivo",
     "measurement": "device_status",
     "precision": "ms",
     "retentionPolicy": "",
@@ -588,7 +602,10 @@
     "precisionV18FluxV20": "ms",
     "retentionPolicyV18Flux": "",
     "org": "${INFLUXDB_ORG}",
-    "bucket": "${INFLUXDB_BUCKET}"
+    "bucket": "${INFLUXDB_BUCKET}",
+    "x": 1500,
+    "y": 380,
+    "wires": []
   },
   {
     "id": "debug-device-storage",
@@ -604,7 +621,7 @@
     "statusVal": "",
     "statusType": "auto",
     "x": 1490,
-    "y": 490,
+    "y": 420,
     "wires": []
   },
   {
@@ -613,8 +630,8 @@
     "z": "smartback-tab",
     "name": "4 · GESTIONE ERRORI",
     "info": "Intercetta eccezioni inattese nei nodi di parsing e trasformazione senza interrompere il flusso principale.",
-    "x": 220,
-    "y": 820,
+    "x": 160,
+    "y": 700,
     "wires": []
   },
   {
@@ -631,8 +648,8 @@
       "prepare-device-influx"
     ],
     "uncaught": false,
-    "x": 170,
-    "y": 870,
+    "x": 150,
+    "y": 740,
     "wires": [
       [
         "format-flow-error"
@@ -651,8 +668,8 @@
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 440,
-    "y": 870,
+    "x": 570,
+    "y": 740,
     "wires": [
       [
         "mqtt-device-alert"
@@ -675,8 +692,8 @@
     "targetType": "msg",
     "statusVal": "",
     "statusType": "auto",
-    "x": 720,
-    "y": 900,
+    "x": 810,
+    "y": 760,
     "wires": []
   },
   {
@@ -685,23 +702,8 @@
     "z": "smartback-tab",
     "name": "2 · ACQUISIZIONE E NORMALIZZAZIONE",
     "info": "Riceve il protocollo invariato di ESP32 e simulatori, conserva solo i dati utili e pubblica il contratto normalizzato.",
-    "x": 270,
-    "y": 200,
+    "x": 220,
+    "y": 240,
     "wires": []
-  },
-  {
-    "id": "cfg-smartback-influxdb",
-    "type": "influxdb",
-    "hostname": "influxdb",
-    "port": "8086",
-    "protocol": "http",
-    "database": "smartback",
-    "name": "SmartBack · InfluxDB 2",
-    "usetls": false,
-    "tls": "",
-    "influxdbVersion": "2.0",
-    "url": "${INFLUXDB_URL}",
-    "rejectUnauthorized": true,
-    "timeout": "10"
   }
 ]
