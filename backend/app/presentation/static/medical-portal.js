@@ -1,4 +1,6 @@
 // Gestisce pazienti, inventario maglie e assegnazioni nella Home medica.
+import {smartbackDialog} from "./themed-dialog.js?v=3";
+
 const esc = (value) => String(value ?? "").replace(
   /[&<>"']/g,
   (character) => ({
@@ -72,8 +74,8 @@ function patientCard(patient) {
       )).join("")
       : "<option>Nessuna maglia disponibile</option>";
   const shirtAction = assigned
-    ? `<button class="danger" onclick="releaseShirt('${esc(patient.assigned_device)}')">Libera maglia</button>`
-    : `<button ${canAssign ? "" : "disabled"} onclick="assign('${esc(patient.id)}','${esc(patient.patient_code)}')">Assegna maglia</button>`;
+    ? `<button class="danger" data-action="release-shirt" data-device="${esc(patient.assigned_device)}">Libera maglia</button>`
+    : `<button ${canAssign ? "" : "disabled"} data-action="assign-shirt" data-patient-id="${esc(patient.id)}" data-patient-code="${esc(patient.patient_code)}">Assegna maglia</button>`;
   return `<article class="card">
     <h3>${esc(patient.name)}</h3>
     <div class="muted">${esc(patient.fiscal_code)}</div>
@@ -87,14 +89,14 @@ function patientCard(patient) {
     </div>
     <div class="patient-controls">
       <select class="shirt-select" id="shirt-${esc(patient.id)}" data-patient-id="${esc(patient.id)}" aria-label="Maglia da associare a ${esc(patient.name)}" ${canAssign ? "" : "disabled"}>${shirtOptions}</select>
-      <div class="actions">${shirtAction}<button class="danger" onclick="removePatient('${esc(patient.patient_code)}','${esc(patient.name)}')">Rimuovi paziente</button></div>
+      <div class="actions">${shirtAction}<button class="danger" data-action="remove-patient" data-patient-code="${esc(patient.patient_code)}" data-patient-name="${esc(patient.name)}">Rimuovi paziente</button></div>
     </div>
   </article>`;
 }
 
 function deviceCard(device) {
-  const release = !device.available && device.patient_name !== "Altro paziente"
-    ? `<button class="danger" onclick="releaseShirt('${esc(device.device_id)}')">Libera maglia</button>`
+  const release = !device.available
+    ? `<button class="danger" data-action="release-shirt" data-device="${esc(device.device_id)}">Libera maglia</button>`
     : "";
   return `<article class="device">
     <h3>${esc(device.display_name)}</h3>
@@ -102,7 +104,7 @@ function deviceCard(device) {
     <p><span class="badge ${device.connected ? "available" : ""}">${device.connected ? "Connessa" : "Non connessa"}</span>
     <span class="badge ${device.available ? "available" : "assigned"}">${device.available ? "Disponibile" : "Assegnata"}</span></p>
     ${device.patient_name ? `<div>Assegnata a: <b>${esc(device.patient_name)}</b></div>` : ""}
-    <div class="actions">${release}<button class="danger" onclick="removeDevice('${esc(device.device_id)}','${esc(device.display_name)}')">Rimuovi maglia</button></div>
+    <div class="actions">${release}<button class="danger" data-action="remove-device" data-device="${esc(device.device_id)}" data-device-name="${esc(device.display_name)}">Rimuovi maglia</button></div>
   </article>`;
 }
 
@@ -148,30 +150,52 @@ async function assign(patientId, patientCode) {
 }
 
 async function releaseShirt(device) {
-  if (!confirm("Liberare questa maglia? Lo storico precedente resterà associato al paziente.")) return;
+  if (!await smartbackDialog.confirm(
+    "Liberare questa maglia? Lo storico precedente resterà associato al paziente.",
+    "Libera maglia",
+  )) return;
   await request(`/api/v1/grafana/devices/${encodeURIComponent(device)}/assignment`, {method: "DELETE"});
   await load();
 }
 
 async function removePatient(code, name) {
-  if (!confirm(`Rimuovere ${name} dalla lista dei pazienti? La maglia verrà liberata, ma account e storico resteranno conservati.`)) return;
+  if (!await smartbackDialog.confirm(
+    `Rimuovere ${name} dalla lista dei pazienti? La maglia verrà liberata, ma account e storico resteranno conservati.`,
+    "Rimuovi paziente",
+  )) return;
   await request(`/api/v1/grafana/patients/${encodeURIComponent(code)}`, {method: "DELETE"});
   await load();
 }
 
 async function removeDevice(device, name) {
-  if (!confirm(`Rimuovere ${name} dall'inventario? Le assegnazioni e lo storico resteranno conservati.`)) return;
+  if (!await smartbackDialog.confirm(
+    `Rimuovere ${name} dall'inventario? Le assegnazioni e lo storico resteranno conservati.`,
+    "Rimuovi maglia",
+  )) return;
   await request(`/api/v1/grafana/devices/${encodeURIComponent(device)}`, {method: "DELETE"});
   await load();
 }
 
-window.assign = assign;
-window.releaseShirt = releaseShirt;
-window.removePatient = removePatient;
-window.removeDevice = removeDevice;
-
 document.getElementById("add-patient").addEventListener("click", () => patientDialog.showModal());
 document.getElementById("add-device").addEventListener("click", () => deviceDialog.showModal());
+document.querySelector("main").addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-action]");
+  if (!button || button.disabled) return;
+  const action = button.dataset.action;
+  try {
+    if (action === "assign-shirt") {
+      await assign(button.dataset.patientId, button.dataset.patientCode);
+    } else if (action === "release-shirt") {
+      await releaseShirt(button.dataset.device);
+    } else if (action === "remove-patient") {
+      await removePatient(button.dataset.patientCode, button.dataset.patientName);
+    } else if (action === "remove-device") {
+      await removeDevice(button.dataset.device, button.dataset.deviceName);
+    }
+  } catch (error) {
+    await smartbackDialog.message(error.message, "Operazione non riuscita");
+  }
+});
 document.querySelectorAll(".close-dialog").forEach((button) => {
   button.addEventListener("click", () => button.closest("dialog").close());
 });
@@ -201,7 +225,10 @@ document.getElementById("claimDeviceForm").addEventListener("submit", async (eve
   event.preventDefault();
   claimDeviceError.textContent = "";
   const code = detectedDevice.value;
-  if (!code || !confirm(`Acquisire la maglia rilevata ${code} nel proprio inventario?`)) return;
+  if (!code || !await smartbackDialog.confirm(
+    `Acquisire la maglia rilevata ${code} nel proprio inventario?`,
+    "Acquisisci maglia",
+  )) return;
   try {
     await request(`/api/v1/grafana/devices/discovered/${encodeURIComponent(code)}/claim`, {
       method: "POST",

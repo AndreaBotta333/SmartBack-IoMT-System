@@ -1,4 +1,6 @@
 // Gestisce acquisizione live e inserimento manuale della calibrazione.
+import {smartbackDialog} from "./themed-dialog.js?v=3";
+
 const endpoint = `/api/v1/grafana/patients/${encodeURIComponent(document.body.dataset.patient)}`;
 
 async function errorMessage(response) {
@@ -40,31 +42,41 @@ for (const input of document.querySelectorAll('input[inputmode="decimal"]')) {
 document.getElementById("auto").addEventListener("click", async () => {
   const snapshot = await fetch(`${endpoint}/calibration-snapshot`, {method: "POST"});
   if (!snapshot.ok) {
-    alert(await errorMessage(snapshot));
+    await smartbackDialog.message(await errorMessage(snapshot), "Calibrazione non riuscita");
     return;
   }
-  if (!confirm("Usare i valori di pitch e roll appena acquisiti come nuova calibrazione?")) return;
+  if (!await smartbackDialog.confirm(
+    "Usare i valori di pitch e roll appena acquisiti come nuova calibrazione?",
+    "Calibrazione live",
+  )) return;
   const response = await fetch(`${endpoint}/calibration-form`, {method: "POST"});
-  if (!response.ok) alert(await errorMessage(response));
+  if (!response.ok) {
+    await smartbackDialog.message(await errorMessage(response), "Calibrazione non riuscita");
+  }
 });
 
 async function applyManual(axis) {
   const input = document.getElementById(axis);
   const value = parseItalianNumber(input);
   if (value === null) {
-    alert("Inserisci un valore valido");
+    await smartbackDialog.message("Inserisci un valore valido.", "Valore non valido");
     return;
   }
   formatItalianNumber(input);
   const label = axis === "pitch" ? "Pitch" : "Roll";
-  if (!confirm(`Impostare manualmente ${label} a ${value.toFixed(1).replace(".", ",")}°?`)) return;
+  if (!await smartbackDialog.confirm(
+    `Impostare manualmente ${label} a ${value.toFixed(1).replace(".", ",")}°?`,
+    `Calibrazione ${label}`,
+  )) return;
   const payload = axis === "pitch" ? {pitch_deg: value} : {roll_deg: value};
   const response = await fetch(`${endpoint}/manual-calibration`, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify(payload),
   });
-  if (!response.ok) alert(await errorMessage(response));
+  if (!response.ok) {
+    await smartbackDialog.message(await errorMessage(response), "Calibrazione non riuscita");
+  }
 }
 
 document.getElementById("apply-pitch").addEventListener("click", () => applyManual("pitch"));

@@ -1,4 +1,6 @@
 // Sincronizza stato e comandi della modalità notte con il backend.
+import {smartbackDialog} from "./themed-dialog.js?v=3";
+
 const body = document.body;
 const form = document.getElementById("night-form");
 const patient = body.dataset.patient;
@@ -16,7 +18,10 @@ if (knownActive && body.dataset.sessionId && body.dataset.sessionStartMs && wind
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!confirm(body.dataset.confirmation)) return;
+  if (!await smartbackDialog.confirm(
+    body.dataset.confirmation,
+    knownActive ? "Termina monitoraggio notturno" : "Attiva monitoraggio notturno",
+  )) return;
   try {
     await fetch(form.action, {method: "POST", cache: "no-store"});
   } finally {

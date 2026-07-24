@@ -15,7 +15,8 @@ class PresentationTemplateTests(unittest.TestCase):
         )
 
         self.assertIn("/smartback-static/grafana-login.js", login)
-        self.assertIn("/smartback-static/medical-portal.js", portal)
+        self.assertIn("/smartback-static/medical-portal.js?v=4", portal)
+        self.assertIn('type="module"', portal)
         self.assertIn("Medico Test", portal)
         self.assertNotIn("<style", login)
         self.assertNotIn("<script>", portal)
@@ -47,8 +48,28 @@ class PresentationTemplateTests(unittest.TestCase):
         )
 
         self.assertIn('data-patient="patient-1"', calibration)
+        self.assertIn("/smartback-static/calibration-control.js?v=3", calibration)
         self.assertIn('data-mode="night"', sessions)
         self.assertIn('data-session-id="night-1"', night)
+        self.assertIn("/smartback-static/night-monitoring-control.js?v=3", night)
+
+    def test_grafana_controls_do_not_use_native_browser_popups(self) -> None:
+        static_directory = (
+            Path(__file__).resolve().parents[1]
+            / "app"
+            / "presentation"
+            / "static"
+        )
+        for filename in (
+            "medical-portal.js",
+            "calibration-control.js",
+            "night-monitoring-control.js",
+        ):
+            script = (static_directory / filename).read_text(encoding="utf-8")
+            self.assertNotIn("window.confirm(", script)
+            self.assertNotIn("window.alert(", script)
+            self.assertNotRegex(script, r"(?<![\w.])confirm\(")
+            self.assertNotRegex(script, r"(?<![\w.])alert\(")
 
     def test_main_does_not_contain_frontend_markup(self) -> None:
         main_source = (
@@ -69,6 +90,24 @@ class PresentationTemplateTests(unittest.TestCase):
         self.assertIn("const selectedShirts = new Map()", script)
         self.assertIn('localeCompare(', script)
         self.assertIn("patient.assigned_device_name", script)
+        self.assertIn("const release = !device.available", script)
+        self.assertNotIn('device.patient_name !== "Altro paziente"', script)
+        self.assertIn('data-action="release-shirt"', script)
+        self.assertIn('button[data-action]', script)
+        self.assertNotIn("onclick=", script)
+
+    def test_grafana_home_link_forces_a_full_navigation(self) -> None:
+        script = (
+            Path(__file__).resolve().parents[1]
+            / "app"
+            / "presentation"
+            / "static"
+            / "grafana-navigation.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('"/grafana/smartback/"', script)
+        self.assertIn("event.stopImmediatePropagation()", script)
+        self.assertIn('window.location.assign(`/smartback/', script)
 
 
 if __name__ == "__main__":
